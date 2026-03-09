@@ -1,3 +1,4 @@
+// app/api/auth/logout/route.ts
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -11,9 +12,18 @@ export async function GET() {
 
   const res = NextResponse.redirect(keycloakLogoutUrl);
 
-  // Clear our app cookie
+  // Clear all app cookies
   res.cookies.set("access_token", "", {
     httpOnly: true,
+    path: "/",
+    maxAge: 0,
+  });
+  res.cookies.set("keycloak_id", "", {
+    httpOnly: true,
+    path: "/",
+    maxAge: 0,
+  });
+  res.cookies.set("user", "", {
     path: "/",
     maxAge: 0,
   });

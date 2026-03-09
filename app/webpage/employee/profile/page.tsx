@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getUserFromCookie, getInitials } from "../../api/lib/auth";
+import { getUserFromCookie, getInitials } from "../../../api/lib/auth";
 
 const mockEmployee = {
   name: "Sriram Kumar",

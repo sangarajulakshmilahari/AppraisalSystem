@@ -1,3 +1,4 @@
+// app/api/auth/callback/route.ts
 import { keycloak } from "../../lib/keycloak";
 
 export async function GET(req: Request) {
@@ -30,8 +31,9 @@ export async function GET(req: Request) {
     return new Response("Token exchange failed", { status: 401 });
   }
 
-  // Optional: Decode token to get username/email (no DB check)
+  // Decode token to get username/email AND keycloak_id (sub)
   let usernameOrEmail: string | null = null;
+  let keycloakId: string | null = null;
   try {
     const parts = (tokenData.access_token || "").split(".");
     if (parts.length >= 2) {
@@ -40,28 +42,40 @@ export async function GET(req: Request) {
       );
       usernameOrEmail =
         payload.preferred_username || payload.email || null;
+      keycloakId = payload.sub || null;
     }
   } catch (err) {
     console.error("Failed to decode token payload", err);
   }
 
-  // Set token cookie
-  const cookies = [
-    `access_token=${tokenData.access_token}; HttpOnly; Path=/; SameSite=Lax`,
-  ];
+  // Build cookie headers
+  const headers = new Headers();
+  headers.set("Location", "/webpage");
 
-  // Optional user cookie for UI
+  // Set token cookie (HttpOnly)
+  headers.append(
+    "Set-Cookie",
+    `access_token=${tokenData.access_token}; HttpOnly; Path=/; SameSite=Lax`
+  );
+
+  // User display name cookie (readable by client JS)
   if (usernameOrEmail) {
-    cookies.push(
+    headers.append(
+      "Set-Cookie",
       `user=${encodeURIComponent(usernameOrEmail)}; Path=/; SameSite=Lax`
+    );
+  }
+
+  // Keycloak ID cookie (for DB user lookup)
+  if (keycloakId) {
+    headers.append(
+      "Set-Cookie",
+      `keycloak_id=${encodeURIComponent(keycloakId)}; HttpOnly; Path=/; SameSite=Lax`
     );
   }
 
   return new Response(null, {
     status: 302,
-    headers: {
-      "Set-Cookie": cookies.join("; "),
-      Location: "/webpage",
-    },
+    headers,
   });
 }
