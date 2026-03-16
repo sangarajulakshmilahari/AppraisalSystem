@@ -154,6 +154,12 @@ export default function WebpageLayout({ children }: { children: React.ReactNode 
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+  if (activeRole) {
+    sessionStorage.setItem("activeRole", activeRole.role_name);
+  }
+}, [activeRole]);
+
   /* ── fetch menus when role changes ── */
   useEffect(() => {
     if (!activeRole) return;
