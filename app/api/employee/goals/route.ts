@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "../../lib/db";
 import { getCurrentUser, getActiveAppraisal } from "../../lib/getuser";
 
-// Helper: compare dates properly (MySQL returns Date objects)
 function isWindowOpen(start: any, end: any): boolean {
   if (!start || !end) return false;
   const today = new Date();
@@ -33,13 +32,22 @@ export async function GET() {
     const pool = getPool();
 
     const [goals] = await pool.query(
-      `SELECT eg.*, ga.area_name
-       FROM employee_goals eg
-       LEFT JOIN goal_areas ga ON eg.area_id = ga.id
-       WHERE eg.appraisal_id = ?
-       ORDER BY eg.goal_no`,
+      `SELECT id, goal_no, area, kpi, description, metric, target, expected_monthly, 
+              timeline, weight, status, self_assessment, manager_feedback, performance_rating
+       FROM employee_goals
+       WHERE appraisal_id = ?
+       ORDER BY goal_no`,
       [appraisal.id]
     );
+
+    let designation = null;
+    if (appraisal.designation_id) {
+      const [desRows] = await pool.query(
+        "SELECT id, designation_name FROM kpi_designations WHERE id = ?",
+        [appraisal.designation_id]
+      );
+      if ((desRows as any[]).length > 0) designation = (desRows as any[])[0];
+    }
 
     const goalWindowOpen = isWindowOpen(cycle.goal_setting_start, cycle.goal_setting_end);
     const goalsEditable = goalWindowOpen && !appraisal.goals_approved_at;
@@ -49,8 +57,6 @@ export async function GET() {
       cycle: {
         id: cycle.id,
         name: cycle.cycle_name,
-        periodStart: cycle.period_start,
-        periodEnd: cycle.period_end,
         goalWindowOpen,
         goalSettingStart: formatDate(cycle.goal_setting_start),
         goalSettingEnd: formatDate(cycle.goal_setting_end),
@@ -60,7 +66,9 @@ export async function GET() {
         currentPhase: appraisal.current_phase,
         goalsSubmittedAt: appraisal.goals_submitted_at,
         goalsApprovedAt: appraisal.goals_approved_at,
+        designationId: appraisal.designation_id,
       },
+      designation,
       goalsEditable,
     });
   } catch (error: any) {
@@ -69,7 +77,7 @@ export async function GET() {
   }
 }
 
-// POST — add a new goal
+// POST — load goals from KPI template
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
@@ -79,41 +87,63 @@ export async function POST(req: NextRequest) {
     if (!active) return NextResponse.json({ error: "No active appraisal cycle" }, { status: 400 });
 
     const { appraisal } = active;
-
     if (appraisal.goals_approved_at) {
-      return NextResponse.json({ error: "Goals already approved, cannot add" }, { status: 403 });
+      return NextResponse.json({ error: "Goals already approved" }, { status: 403 });
     }
 
     const body = await req.json();
-    const { area_id, description, metric, target, timeline, weight } = body;
-
-    if (!description?.trim()) {
-      return NextResponse.json({ error: "Goal description is required" }, { status: 400 });
-    }
+    const { designation_id } = body;
+    if (!designation_id) return NextResponse.json({ error: "Designation is required" }, { status: 400 });
 
     const pool = getPool();
 
-    const [maxRows] = await pool.query(
-      "SELECT COALESCE(MAX(goal_no), 0) + 1 as next_no FROM employee_goals WHERE appraisal_id = ?",
+    const [templates] = await pool.query(
+      "SELECT * FROM kpi_templates WHERE designation_id = ? AND is_active = TRUE ORDER BY display_order",
+      [designation_id]
+    );
+
+    if ((templates as any[]).length === 0) {
+      return NextResponse.json({ error: "No KPI templates found" }, { status: 404 });
+    }
+
+    // Delete existing draft goals
+    await pool.query(
+      "DELETE FROM employee_goals WHERE appraisal_id = ? AND status = 'draft'",
       [appraisal.id]
     );
-    const nextNo = (maxRows as any[])[0].next_no;
 
-    const [result] = await pool.query(
-      `INSERT INTO employee_goals (appraisal_id, goal_no, area_id, description, metric, target, timeline, weight, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
-      [appraisal.id, nextNo, area_id || null, description, metric || null, target || null, timeline || null, weight || 0]
+    // Insert from templates — keep area and kpi as separate columns
+    let goalNo = 1;
+    for (const t of templates as any[]) {
+      await pool.query(
+        `INSERT INTO employee_goals 
+         (appraisal_id, goal_no, area, kpi, description, metric, target, expected_monthly, weight, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+        [
+          appraisal.id,
+          goalNo++,
+          t.area || null,
+          t.kpi || null,
+          [t.area, t.kpi].filter(Boolean).join(" — "), // description as fallback
+          t.metric || null,
+          t.target || null,
+          t.target || null, // expected_monthly defaults to target
+          t.weight || 0,
+        ]
+      );
+    }
+
+    await pool.query(
+      "UPDATE employee_appraisals SET designation_id = ? WHERE id = ?",
+      [designation_id, appraisal.id]
     );
 
-    const [newGoal] = await pool.query(
-      `SELECT eg.*, ga.area_name
-       FROM employee_goals eg
-       LEFT JOIN goal_areas ga ON eg.area_id = ga.id
-       WHERE eg.id = ?`,
-      [(result as any).insertId]
+    const [goals] = await pool.query(
+      "SELECT * FROM employee_goals WHERE appraisal_id = ? ORDER BY goal_no",
+      [appraisal.id]
     );
 
-    return NextResponse.json({ goal: (newGoal as any[])[0] }, { status: 201 });
+    return NextResponse.json({ goals }, { status: 201 });
   } catch (error: any) {
     console.error("POST /api/employee/goals error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

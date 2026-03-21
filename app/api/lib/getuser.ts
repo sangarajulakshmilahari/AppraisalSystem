@@ -33,10 +33,6 @@ export async function getCurrentUser() {
   return userRow; // { id, keycloak_id, username, email } or null
 }
 
-/**
- * Get or create the employee_appraisals row for the active cycle.
- * Returns the appraisal row or null if no active cycle exists.
- */
 export async function getActiveAppraisal(userId: number) {
   const pool = getPool();
 

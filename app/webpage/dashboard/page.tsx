@@ -87,10 +87,10 @@ function EmployeeDashboard({ data }: { data: any }) {
   const currentPhaseLabel = PHASE_LABELS[cycle?.currentPhase] || cycle?.currentPhase || "—";
 
   const quickLinks = [
-    { href: "/webpage/goals",            label: "My Goals",         desc: "View & manage performance goals",    icon: "🎯", color: "#7c3aed" },
-    { href: "/webpage/self-assessment",   label: "Self Assessment",  desc: "Submit your performance evaluation", icon: "📝", color: "#4f46e5" },
-    { href: "/webpage/competency",        label: "Competency",       desc: "Rate your competencies (1–5)",      icon: "⭐", color: "#0891b2" },
-    { href: "/webpage/development-plan",  label: "Development Plan", desc: "Track learning & growth actions",   icon: "📈", color: "#059669" },
+    { href: "/webpage/employee/goals",            label: "My Goals",         desc: "View & manage performance goals",    icon: "🎯", color: "#7c3aed" },
+    { href: "/webpage/employee/self-assessment",   label: "Self Assessment",  desc: "Submit your performance evaluation", icon: "📝", color: "#4f46e5" },
+    { href: "/webpage/employee/competency",        label: "Competency",       desc: "Rate your competencies (1–5)",      icon: "⭐", color: "#0891b2" },
+    { href: "/webpage/employee/development-plan",  label: "Development Plan", desc: "Track learning & growth actions",   icon: "📈", color: "#059669" },
   ];
 
   return (
