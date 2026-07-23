@@ -1,6 +1,7 @@
 // app/webpage/profile/page.tsx
 "use client";
-import { useState, useEffect } from "react";
+
+import { useEffect, useState } from "react";
 
 const PHASE_LABELS: Record<string, string> = {
   goal_setting: "Goal Setting",
@@ -11,10 +12,52 @@ const PHASE_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
+type Profile = {
+  id: number;
+  username: string;
+  email: string;
+  createdAt?: string;
+  roles: string[];
+  managerName?: string | null;
+  resume?: {
+    id: number;
+    fileName: string;
+    filePath: string;
+    mimeType: string;
+    fileSizeBytes: number;
+    uploadedAt: string | null;
+    dueDate: string | null;
+    stale: boolean;
+    reminderSentAt: string | null;
+  } | null;
+};
+
+type Cycle = {
+  cycleName: string;
+  currentPhase: string;
+  periodStart: string;
+  periodEnd: string;
+};
+
+function FieldRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ padding: "12px 0", borderBottom: "1px solid #f1f5f9" }}>
+      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        {label}
+      </p>
+      <p style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 600, color: "var(--color-text-heading)" }}>
+        {value || "—"}
+      </p>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<any>(null);
-  const [cycle, setCycle] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [cycle, setCycle] = useState<Cycle | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     fetch("/api/employee/profile")
@@ -27,12 +70,54 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const refreshProfile = async () => {
+    const res = await fetch("/api/employee/profile");
+    const data = await res.json();
+    if (data.profile) setProfile(data.profile);
+    if (data.cycle) setCycle(data.cycle);
+  };
+
+  const handleResumeUpload = async (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    setMessage("");
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+      const res = await fetch("/api/employee/profile/resume", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Failed to upload resume");
+        return;
+      }
+      setMessage("Resume uploaded successfully.");
+      await refreshProfile();
+    } catch (e: unknown) {
+      setMessage(e instanceof Error ? e.message : "Failed to upload resume");
+    } finally {
+      setUploading(false);
+      ev.target.value = "";
+    }
+  };
+
   if (loading) {
-    return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "#9ca3af" }}>Loading profile...</div>;
+    return (
+      <div style={{ display: "grid", placeItems: "center", minHeight: 180, color: "var(--color-text-muted)", background: "#fff", border: "1px solid var(--color-border)", borderRadius: 16, boxShadow: "var(--shadow-soft)" }}>
+        Loading profile...
+      </div>
+    );
   }
 
   if (!profile) {
-    return <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>Unable to load profile</div>;
+    return (
+      <div style={{ textAlign: "center", padding: 40, color: "var(--color-text-muted)", background: "#fff", border: "1px solid var(--color-border)", borderRadius: 16, boxShadow: "var(--shadow-soft)" }}>
+        Unable to load profile
+      </div>
+    );
   }
 
   const initials = profile.username
@@ -41,77 +126,127 @@ export default function ProfilePage() {
     .map((p: string) => p[0]?.toUpperCase() ?? "")
     .join("");
 
-  const Field = ({ label, value }: { label: string; value: string }) => (
-    <div style={{ padding: "14px 0", borderBottom: "1px solid #f3f0ff" }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</p>
-      <p style={{ fontSize: 14, fontWeight: 600, color: "#1f2937" }}>{value || "—"}</p>
-    </div>
-  );
-
   return (
-    <div style={{ maxWidth: 900 }}>
-      <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1f2937", marginBottom: 20 }}>My Profile</h2>
+    <div style={{ maxWidth: 980, display: "grid", gap: 16 }}>
+      <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>My Profile</h1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 20 }}>
-        {/* Avatar Card */}
-        <div style={{ background: "#fff", borderRadius: 16, padding: "32px 24px", border: "1px solid #ede9fe", textAlign: "center", boxShadow: "0 4px 16px rgba(124,58,237,0.08)" }}>
-          <div style={{ width: 88, height: 88, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#ec4899)", margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, color: "#fff", boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 16 }}>
+        <section style={{ background: "#fff", borderRadius: 16, padding: "28px 20px", border: "1px solid var(--color-border)", textAlign: "center", boxShadow: "var(--shadow-soft)" }}>
+          <div style={{ width: 92, height: 92, borderRadius: "50%", background: "#e7eef9", margin: "0 auto 14px", display: "grid", placeItems: "center", fontSize: 30, fontWeight: 800, color: "var(--color-navy-700)" }}>
             {initials}
           </div>
-          <h3 style={{ fontSize: 17, fontWeight: 800, color: "#1f2937", marginBottom: 4 }}>{profile.username}</h3>
-          <p style={{ fontSize: 13, color: "#7c3aed", fontWeight: 600, marginBottom: 12 }}>{profile.email}</p>
+          <h2 style={{ margin: 0, fontSize: 22, color: "var(--color-text-heading)" }}>{profile.username}</h2>
+          <p style={{ margin: "4px 0 12px", fontSize: 13, color: "var(--color-text-muted)" }}>{profile.email}</p>
 
-          {/* Roles */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 14 }}>
             {profile.roles.map((r: string) => (
-              <span key={r} style={{ background: "#f5f3ff", color: "#7c3aed", borderRadius: 20, padding: "3px 12px", fontSize: 11, fontWeight: 600, border: "1px solid #ede9fe" }}>{r}</span>
+              <span key={r} className="status-pill" style={{ background: "#eef6ff", color: "var(--color-navy-700)", border: "1px solid #dbe5f3" }}>
+                {r}
+              </span>
             ))}
           </div>
 
-          <div style={{ background: "#dcfce7", borderRadius: 10, padding: "8px 16px" }}>
-            <p style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>● Active Employee</p>
+          <div className="status-pill status-approved" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px" }}>
+            ● Active Employee
           </div>
-        </div>
+        </section>
 
-        {/* Details */}
-        <div style={{ background: "#fff", borderRadius: 16, padding: "24px 28px", border: "1px solid #ede9fe", boxShadow: "0 4px 16px rgba(124,58,237,0.08)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 32 }}>
+        <section style={{ background: "#fff", borderRadius: 16, padding: "22px 24px", border: "1px solid var(--color-border)", boxShadow: "var(--shadow-soft)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 24 }}>
             <div>
-              <h4 style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4, paddingBottom: 8, borderBottom: "2px solid #ede9fe" }}>Account Information</h4>
-              <Field label="Username" value={profile.username} />
-              <Field label="Email Address" value={profile.email} />
-              <Field label="Member Since" value={profile.createdAt || "—"} />
-              {/* <Field label="Keycloak ID" value={profile.keycloakId ? profile.keycloakId.substring(0, 8) + "..." : "—"} /> */}
+              <h3 style={{ margin: 0, fontSize: 16, color: "var(--color-text-heading)", paddingBottom: 10, borderBottom: "1px solid var(--color-border)" }}>
+                Account Information
+              </h3>
+              <FieldRow label="Username" value={profile.username} />
+              <FieldRow label="Email Address" value={profile.email} />
+              <FieldRow label="Member Since" value={profile.createdAt || "—"} />
             </div>
+
             <div>
-              <h4 style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4, paddingBottom: 8, borderBottom: "2px solid #ede9fe" }}>Role & Reporting</h4>
-              <Field label="Assigned Roles" value={profile.roles.join(", ")} />
-              <Field label="Reporting Manager" value={profile.managerName || "Not assigned"} />
-              <Field label="System ID" value={`#${profile.id}`} />
+              <h3 style={{ margin: 0, fontSize: 16, color: "var(--color-text-heading)", paddingBottom: 10, borderBottom: "1px solid var(--color-border)" }}>
+                Role & Reporting
+              </h3>
+              <FieldRow label="Assigned Roles" value={profile.roles.join(", ")} />
+              <FieldRow label="Reporting Manager" value={profile.managerName || "Not assigned"} />
+              {/* <FieldRow label="System ID" value={`#${profile.id}`} /> */}
             </div>
           </div>
 
-          {/* Appraisal Cycle Info */}
           {cycle && (
-            <div style={{ marginTop: 20, padding: "16px 18px", background: "linear-gradient(90deg,#f5f3ff,#ede9fe)", borderRadius: 12, border: "1px solid #c4b5fd" }}>
-              <h4 style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Current Appraisal Cycle</h4>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+            <div style={{ marginTop: 18, padding: "14px 16px", background: "#fff8f3", borderRadius: 12, border: "1px solid #ffd7c2" }}>
+              <h4 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "var(--color-orange-500)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Current Appraisal Cycle
+              </h4>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginTop: 10 }}>
                 <div>
-                  <p style={{ fontSize: 11, color: "#7c3aed", fontWeight: 700, marginBottom: 2 }}>Cycle</p>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: "#4c1d95" }}>{cycle.cycleName}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--color-text-muted)", fontWeight: 700 }}>Cycle</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 14, fontWeight: 700, color: "var(--color-text-heading)" }}>{cycle.cycleName}</p>
                 </div>
                 <div>
-                  <p style={{ fontSize: 11, color: "#7c3aed", fontWeight: 700, marginBottom: 2 }}>Current Phase</p>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: "#4c1d95" }}>{PHASE_LABELS[cycle.currentPhase] || cycle.currentPhase}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--color-text-muted)", fontWeight: 700 }}>Current Phase</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 14, fontWeight: 700, color: "var(--color-text-heading)" }}>
+                    {PHASE_LABELS[cycle.currentPhase] || cycle.currentPhase}
+                  </p>
                 </div>
                 <div>
-                  <p style={{ fontSize: 11, color: "#7c3aed", fontWeight: 700, marginBottom: 2 }}>Period</p>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: "#4c1d95" }}>{cycle.periodStart} – {cycle.periodEnd}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--color-text-muted)", fontWeight: 700 }}>Period</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 14, fontWeight: 700, color: "var(--color-text-heading)" }}>
+                    {cycle.periodStart} – {cycle.periodEnd}
+                  </p>
                 </div>
               </div>
             </div>
           )}
-        </div>
+
+          <div style={{ marginTop: 18, padding: "14px 16px", background: profile.resume?.stale ? "#fff7ed" : "#f8fafc", borderRadius: 12, border: profile.resume?.stale ? "1px solid #fdba74" : "1px solid var(--color-border)" }}>
+            <h4 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "var(--color-orange-500)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Resume Management
+            </h4>
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-body)" }}>
+                {profile.resume
+                  ? `Current resume: ${profile.resume.fileName}`
+                  : "No resume uploaded yet."}
+              </p>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}>
+                Last updated: {profile.resume?.uploadedAt || "—"} · Next update due: {profile.resume?.dueDate || "After first upload"}
+              </p>
+              {profile.resume?.stale && (
+                <div className="status-pill" style={{ background: "#fff1f2", color: "#b91c1c", border: "1px solid #fecdd3", width: "fit-content" }}>
+                  Resume update overdue (more than 6 months)
+                </div>
+              )}
+              {profile.resume?.filePath && (
+                <a
+                  href={profile.resume.filePath}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ width: "fit-content", fontSize: 13, fontWeight: 700, color: "var(--color-navy-700)", textDecoration: "none" }}
+                >
+                  View current resume
+                </a>
+              )}
+
+              <label style={{ width: "fit-content" }}>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={handleResumeUpload}
+                  style={{ display: "none" }}
+                  disabled={uploading}
+                />
+                <span className="btn btn-primary" style={{ display: "inline-flex", cursor: uploading ? "default" : "pointer", opacity: uploading ? 0.7 : 1 }}>
+                  {uploading ? "Uploading..." : profile.resume ? "Replace Resume" : "Upload Resume"}
+                </span>
+              </label>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>Allowed formats: PDF, DOC, DOCX (max 5MB)</p>
+
+              {message && (
+                <p style={{ margin: 0, fontSize: 13, color: message.includes("success") ? "#15803d" : "#b91c1c" }}>{message}</p>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );

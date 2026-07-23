@@ -22,7 +22,7 @@ export async function POST() {
 
     // Check all goals have self_assessment filled
     const [goals] = await pool.query(
-      "SELECT id, self_assessment FROM employee_goals WHERE appraisal_id = ?",
+      "SELECT id, self_assessment FROM employee_goals WHERE appraisal_id = ? AND is_deleted = 0",
       [appraisal.id]
     );
 

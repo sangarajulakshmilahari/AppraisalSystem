@@ -1,7 +1,19 @@
 // app/webpage/dashboard/page.tsx
 "use client";
+
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  CalendarDays,
+  Check,
+  ClipboardList,
+  Gauge,
+  Star,
+  Target,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 
 const PHASE_LABELS: Record<string, string> = {
   goal_setting: "Goal Setting",
@@ -12,30 +24,123 @@ const PHASE_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
-// Role detection: sidebar stores activeRole in sessionStorage
+type PhaseStatus = "done" | "current" | "upcoming";
+
+type DashboardPhase = {
+  name: string;
+  status: PhaseStatus;
+};
+
+type DashboardStat = {
+  label: string;
+  value: string | number;
+};
+
+type PendingAction = {
+  id: string | number;
+  href: string;
+  title: string;
+  due?: string;
+  desc?: string;
+  urgent?: boolean;
+};
+
+type EmployeeDashboardData = {
+  hasCycle?: boolean;
+  cycle?: {
+    name?: string;
+    periodStart?: string;
+    periodEnd?: string;
+    currentPhase?: string;
+  };
+  progress?: number;
+  phases?: DashboardPhase[];
+  stats?: DashboardStat[];
+  pendingActions?: PendingAction[];
+};
+
+type ManagerMember = {
+  appraisalId: string | number;
+  employeeName: string;
+  goalCount: number;
+  phaseLabel: string;
+  reviewCompleted?: boolean;
+  overallRating?: string | number | null;
+};
+
+type ManagerDashboardData = {
+  hasTeam?: boolean;
+  message?: string;
+  cycle?: {
+    name?: string;
+    periodStart?: string;
+    periodEnd?: string;
+  };
+  stats?: DashboardStat[];
+  members?: ManagerMember[];
+  pendingActions?: PendingAction[];
+};
+
+const shell: Record<string, React.CSSProperties> = {
+  page: { display: "grid", gap: 18 },
+  hero: {
+    borderRadius: 14,
+    border: "1px solid #e2e8f0",
+    background: "#ffffff",
+    boxShadow: "0 8px 20px rgba(15, 23, 42, 0.04)",
+    padding: 20,
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: 14,
+    alignItems: "center",
+  },
+  title: { margin: 0, fontSize: 28, color: "var(--color-text-heading)", letterSpacing: "-0.02em" },
+  subtitle: { margin: "6px 0 0", color: "#64748b", fontSize: 13 },
+  progressBadge: {
+    minWidth: 168,
+    minHeight: 112,
+    borderRadius: 14,
+    border: "1px solid #e2e8f0",
+    background: "#ffffff",
+    display: "grid",
+    placeItems: "center",
+    textAlign: "center",
+    padding: 12,
+  },
+  stats: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 },
+  card: {
+    borderRadius: 14,
+    border: "1px solid #e2e8f0",
+    background: "#fff",
+    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
+    padding: 16,
+  },
+  cardTitle: { margin: 0, fontSize: 13, fontWeight: 700, textTransform: "uppercase", color: "var(--color-text-muted)", letterSpacing: ".04em" },
+  cardValue: { margin: "8px 0 0", fontSize: 28, fontWeight: 800, color: "var(--color-text-heading)", letterSpacing: "-0.02em" },
+  sectionGrid: { display: "grid", gridTemplateColumns: "1fr 340px", gap: 14 },
+  sectionTitle: { margin: 0, fontSize: 18, fontWeight: 700, color: "var(--color-text-heading)", letterSpacing: "-0.02em" },
+  quickGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 },
+};
+
+type DashboardData = EmployeeDashboardData | ManagerDashboardData;
 
 export default function DashboardPage() {
-  const [activeRole, setActiveRole] = useState<string>("Employee");
-  const [data, setData] = useState<any>(null);
+  const [activeRole, setActiveRole] = useState<string>(() => {
+    if (typeof window === "undefined") return "Employee";
+    return sessionStorage.getItem("activeRole") || "Employee";
+  });
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Detect role from sessionStorage (set by sidebar layout)
   useEffect(() => {
-    const role = sessionStorage.getItem("activeRole") || "Employee";
-    setActiveRole(role);
-
-    const apiUrl = role === "Manager"
-      ? "/api/manager/dashboard"
-      : "/api/employee/dashboard";
-
+    const apiUrl = activeRole === "Manager" ? "/api/manager/dashboard" : "/api/employee/dashboard";
     fetch(apiUrl)
       .then((r) => r.json())
       .then((d) => setData(d))
       .catch((e) => console.error("Dashboard error:", e))
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeRole]);
 
-  // Listen for role changes via storage event
   useEffect(() => {
     const handleStorage = () => {
       const role = sessionStorage.getItem("activeRole") || "Employee";
@@ -49,246 +154,367 @@ export default function DashboardPage() {
           .finally(() => setLoading(false));
       }
     };
+
     window.addEventListener("storage", handleStorage);
-    // Also poll sessionStorage for same-tab changes
     const interval = setInterval(() => {
       const role = sessionStorage.getItem("activeRole") || "Employee";
       if (role !== activeRole) handleStorage();
     }, 500);
-    return () => { window.removeEventListener("storage", handleStorage); clearInterval(interval); };
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      clearInterval(interval);
+    };
   }, [activeRole]);
 
   if (loading) {
-    return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300, color: "#9ca3af" }}>Loading dashboard...</div>;
-  }
-
-  if (activeRole === "Manager") {
-    return <ManagerDashboard data={data} />;
-  }
-
-  return <EmployeeDashboard data={data} />;
-}
-
-// ═══════════════════════════════════════
-// EMPLOYEE DASHBOARD
-// ═══════════════════════════════════════
-function EmployeeDashboard({ data }: { data: any }) {
-  if (!data || data.hasCycle === false) {
     return (
-      <div style={{ maxWidth: 600, margin: "80px auto", textAlign: "center" }}>
-        <div style={{ fontSize: 56, marginBottom: 20 }}>📋</div>
-        <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1f2937", marginBottom: 8 }}>No Active Appraisal Cycle</h2>
-        <p style={{ color: "#9ca3af", fontSize: 14 }}>There is no appraisal cycle active at the moment.</p>
+      <div style={{ ...shell.card, display: "grid", placeItems: "center", minHeight: 220, color: "var(--color-text-muted)" }}>
+        Loading dashboard...
       </div>
     );
   }
 
-  const { cycle, progress, phases, stats, pendingActions } = data;
-  const currentPhaseLabel = PHASE_LABELS[cycle?.currentPhase] || cycle?.currentPhase || "—";
+  if (activeRole === "Manager") return <ManagerDashboard data={(data as ManagerDashboardData) ?? {}} />;
+  return <EmployeeDashboard data={(data as EmployeeDashboardData) ?? {}} />;
+}
 
-  const quickLinks = [
-    { href: "/webpage/employee/goals",            label: "My Goals",         desc: "View & manage performance goals",    icon: "🎯", color: "#7c3aed" },
-    { href: "/webpage/employee/self-assessment",   label: "Self Assessment",  desc: "Submit your performance evaluation", icon: "📝", color: "#4f46e5" },
-    { href: "/webpage/employee/competency",        label: "Competency",       desc: "Rate your competencies (1–5)",      icon: "⭐", color: "#0891b2" },
-    { href: "/webpage/employee/development-plan",  label: "Development Plan", desc: "Track learning & growth actions",   icon: "📈", color: "#059669" },
-  ];
-
+function Hero({
+  greeting,
+  eyebrow,
+  title,
+  subtitle,
+  progress,
+}: {
+  greeting: string;
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  progress: number;
+}) {
+  const safeProgress = Math.max(0, Math.min(100, progress || 0));
   return (
-    <div style={{ maxWidth: 1200 }}>
-      {/* Cycle Banner */}
-      <div style={{ background: "linear-gradient(135deg,#7c3aed 0%,#4f46e5 50%,#0891b2 100%)", borderRadius: 16, padding: "24px 28px", marginBottom: 24, color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 8px 30px rgba(124,58,237,0.3)" }}>
-        <div>
-          <p style={{ fontSize: 12, fontWeight: 600, opacity: 0.8, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Active Appraisal Cycle</p>
-          <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>{cycle?.name}</h2>
-          <p style={{ opacity: 0.85, fontSize: 14 }}>{cycle?.periodStart} – {cycle?.periodEnd} &nbsp;·&nbsp; Current Phase: <strong>{currentPhaseLabel}</strong></p>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ background: "rgba(255,255,255,0.2)", borderRadius: 12, padding: "10px 20px" }}>
-            <p style={{ fontSize: 28, fontWeight: 800 }}>{progress}%</p>
-            <p style={{ fontSize: 12, opacity: 0.85 }}>Completed</p>
-          </div>
-        </div>
+    <div style={shell.hero}>
+      <div>
+        <p style={{ margin: 0, fontSize: 13, color: "#475569", fontWeight: 600 }}>{greeting}</p>
+        <h1 className="font-display" style={shell.title}>{title}</h1>
+        <p style={{ ...shell.subtitle, display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <CalendarDays size={14} /> {subtitle}
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--color-orange-500)", fontWeight: 700 }}>{eyebrow}</p>
       </div>
-
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
-        {stats?.map((s: any) => (
-          <div key={s.label} style={{ background: "#fff", borderRadius: 14, padding: "20px", border: "1px solid #ede9fe" }}>
-            <p style={{ fontSize: 12, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", marginBottom: 8 }}>{s.label}</p>
-            <p style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</p>
+      <div style={shell.progressBadge}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div
+            style={{
+              width: 74,
+              height: 74,
+              borderRadius: "50%",
+              background: `conic-gradient(var(--color-orange-500) ${safeProgress * 3.6}deg, #f2f2f2 ${safeProgress * 3.6}deg)`,
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fff" }} />
           </div>
-        ))}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20, marginBottom: 20 }}>
-        {/* Phase Progress */}
-        <div style={{ background: "#fff", borderRadius: 14, padding: "24px", border: "1px solid #ede9fe" }}>
-          <h3 style={{ fontWeight: 700, fontSize: 15, color: "#1f2937", marginBottom: 20 }}>Appraisal Progress</h3>
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {phases?.map((p: any, i: number) => (
-              <div key={p.name} style={{ display: "flex", alignItems: "center", flex: 1 }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, marginBottom: 8, background: p.status === "done" ? "#7c3aed" : p.status === "current" ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "#f3f4f6", color: p.status !== "upcoming" ? "#fff" : "#9ca3af", border: p.status === "current" ? "3px solid #c4b5fd" : "none" }}>
-                    {p.status === "done" ? "✓" : i + 1}
-                  </div>
-                  <p style={{ fontSize: 10, color: p.status === "current" ? "#7c3aed" : p.status === "done" ? "#10b981" : "#9ca3af", fontWeight: p.status === "current" ? 700 : 500, textAlign: "center" }}>{p.name}</p>
-                </div>
-                {i < (phases?.length || 0) - 1 && <div style={{ height: 2, flex: 0.3, background: p.status === "done" ? "#7c3aed" : "#e5e7eb", marginBottom: 22 }} />}
-              </div>
-            ))}
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)" }}>Overall Progress</div>
+            <div style={{ fontSize: 44, fontWeight: 800, color: "var(--color-orange-500)", lineHeight: 1 }}>{safeProgress}%</div>
           </div>
-        </div>
-
-        {/* Pending Actions */}
-        <div style={{ background: "#fff", borderRadius: 14, padding: "24px", border: "1px solid #ede9fe" }}>
-          <h3 style={{ fontWeight: 700, fontSize: 15, color: "#1f2937", marginBottom: 16 }}>Pending Actions</h3>
-          {(!pendingActions || pendingActions.length === 0) ? (
-            <div style={{ padding: 20, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>🎉 No pending actions</div>
-          ) : pendingActions.map((a: any) => (
-            <Link key={a.id} href={a.href} style={{ textDecoration: "none" }}>
-              <div style={{ display: "flex", gap: 12, marginBottom: 10, padding: "12px 14px", borderRadius: 10, background: a.urgent ? "#fefce8" : "#fafaf9", border: `1px solid ${a.urgent ? "#fef08a" : "#e5e7eb"}`, cursor: "pointer" }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.urgent ? "#f59e0b" : "#9ca3af", marginTop: 5, flexShrink: 0 }} />
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1f2937", marginBottom: 2 }}>{a.title}</p>
-                  <p style={{ fontSize: 11, color: a.urgent ? "#d97706" : "#9ca3af" }}>Due: {a.due}</p>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Quick Access */}
-      <div style={{ background: "#fff", borderRadius: 14, padding: "24px", border: "1px solid #ede9fe" }}>
-        <h3 style={{ fontWeight: 700, fontSize: 15, color: "#1f2937", marginBottom: 16 }}>Quick Access</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
-          {quickLinks.map((q) => (
-            <Link key={q.href} href={q.href} style={{ textDecoration: "none" }}>
-              <div style={{ padding: "18px", borderRadius: 12, border: "1px solid #ede9fe", background: "#faf8ff" }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>{q.icon}</div>
-                <p style={{ fontWeight: 700, fontSize: 13, color: q.color, marginBottom: 4 }}>{q.label}</p>
-                <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.4 }}>{q.desc}</p>
-              </div>
-            </Link>
-          ))}
         </div>
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════
-// MANAGER DASHBOARD
-// ═══════════════════════════════════════
-function ManagerDashboard({ data }: { data: any }) {
+function getEmployeeStatVisual(label: string) {
+  const l = label.toLowerCase();
+  if (l.includes("goal")) return { icon: <Target size={18} />, cta: "View goals" };
+  if (l.includes("self")) return { icon: <ClipboardList size={18} />, cta: "Start now" };
+  if (l.includes("compet")) return { icon: <Star size={18} />, cta: "Start now" };
+  if (l.includes("overall") || l.includes("progress")) return { icon: <TrendingUp size={18} />, cta: "View details" };
+  return { icon: <Gauge size={18} />, cta: "Open" };
+}
+
+function Stepper({ phases }: { phases: DashboardPhase[] }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 0, marginTop: 12 }}>
+      {phases?.map((p, i: number) => {
+        const done = p.status === "done";
+        const current = p.status === "current";
+        return (
+          <div key={p.name} style={{ display: "flex", alignItems: "center", flex: 1 }}>
+            <div style={{ display: "grid", justifyItems: "center", gap: 8, width: "100%" }}>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  border: current ? "2px solid #ffd7c2" : "1px solid var(--color-border)",
+                  background: done ? "#16a34a" : current ? "var(--color-orange-500)" : "#fff",
+                  color: done || current ? "#fff" : "#94a3b8",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 700,
+                }}
+              >
+                {done ? <Check size={16} /> : i + 1}
+              </div>
+              <span style={{ fontSize: 11, color: current ? "var(--color-orange-500)" : done ? "#16a34a" : "var(--color-text-muted)", textAlign: "center", fontWeight: current ? 700 : 500 }}>
+                {p.name}
+              </span>
+            </div>
+            {i < (phases?.length || 0) - 1 && (
+              <div
+                style={{
+                  height: 2,
+                  width: "100%",
+                  marginBottom: 28,
+                  background: done ? "#16a34a" : "#d1d5db",
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PendingActions({ pendingActions, dueLabel = "Due" }: { pendingActions: PendingAction[]; dueLabel?: string }) {
+  if (!pendingActions || pendingActions.length === 0) {
+    return <div style={{ ...shell.card, color: "var(--color-text-muted)", textAlign: "center" }}>No pending actions</div>;
+  }
+
+  return (
+    <div style={{ ...shell.card, display: "grid", gap: 10 }}>
+      {pendingActions.map((a) => (
+        <Link key={a.id} href={a.href} style={{ textDecoration: "none" }}>
+          <div
+            style={{
+              padding: 12,
+              border: "1px solid #e2e8f0",
+              borderRadius: 12,
+              display: "grid",
+              gap: 4,
+              background: "#fff",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text-heading)", display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: a.urgent ? "#fb923c" : "#cbd5e1" }} />
+                {a.title}
+              </span>
+              <span className="status-pill" style={{ background: a.urgent ? "rgba(217,119,6,.12)" : "#f1f5f9", color: a.urgent ? "#d97706" : "#475569" }}>
+                {a.urgent ? "High" : "Normal"}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+              {dueLabel}: {a.due || a.desc}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--color-orange-500)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              Open action <ArrowRight size={14} />
+            </div>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function QuickAccess({ links }: { links: { href: string; label: string; desc: string; icon: React.ReactNode }[] }) {
+  return (
+    <div style={shell.quickGrid}>
+      {links.map((q) => (
+        <Link key={q.href} href={q.href} style={{ textDecoration: "none" }}>
+          <div style={{ ...shell.card, minHeight: 158, display: "grid", alignContent: "space-between", gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid #ffd7c2", background: "#fff7f3", color: "var(--color-orange-500)", display: "grid", placeItems: "center" }}>
+              {q.icon}
+            </div>
+            <div>
+              <p style={{ margin: 0, color: "var(--color-text-heading)", fontWeight: 700 }}>{q.label}</p>
+              <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 13, lineHeight: 1.5 }}>{q.desc}</p>
+            </div>
+            <div style={{ color: "var(--color-orange-500)", fontSize: 13, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              Open <ArrowRight size={14} />
+            </div>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function EmployeeDashboard({ data }: { data: EmployeeDashboardData }) {
+  if (!data || data.hasCycle === false) {
+    return (
+      <div style={{ ...shell.card, maxWidth: 700, margin: "24px auto", textAlign: "center" }}>
+        <h3 style={{ margin: 0 }}>No Active Appraisal Cycle</h3>
+        <p style={{ color: "var(--color-text-muted)" }}>There is no appraisal cycle active at the moment.</p>
+      </div>
+    );
+  }
+
+  const { cycle, progress, phases, stats, pendingActions } = data;
+  const phaseKey = cycle?.currentPhase ?? "";
+  const currentPhaseLabel = PHASE_LABELS[phaseKey] || phaseKey || "—";
+
+  const quickLinks = [
+    { href: "/webpage/employee/goals", label: "My Goals", desc: "View and manage performance goals", icon: <Target size={18} /> },
+    {
+      href: "/webpage/assessment/goals/self-assessment",
+      label: "Assessment · Goals",
+      desc: "Complete your goal self assessment",
+      icon: <ClipboardList size={18} />,
+    },
+    {
+      href: "/webpage/assessment/competency-assessment/self-assessment",
+      label: "Assessment · Competency",
+      desc: "Rate your competencies from 1 to 5",
+      icon: <Star size={18} />,
+    },
+    { href: "/webpage/employee/development-plan", label: "Development Plan", desc: "Track learning and growth actions", icon: <TrendingUp size={18} /> },
+    { href: "/webpage/employee/feedback", label: "Feedback & Results", desc: "View feedback and appraisal results", icon: <ArrowRight size={18} /> },
+  ];
+
+  return (
+    <div style={shell.page}>
+      <Hero
+        greeting={`${new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening"}, User!`}
+        eyebrow="Active Appraisal Cycle"
+        title={cycle?.name || "Appraisal Cycle"}
+        subtitle={`${cycle?.periodStart} – ${cycle?.periodEnd} · Current phase: ${currentPhaseLabel}`}
+        progress={progress || 0}
+      />
+
+      <div style={shell.stats}>
+        {stats?.map((s) => {
+          const valueText = String(s.value ?? "");
+          const compactValueSize = valueText.length > 10 ? 22 : valueText.length > 6 ? 24 : 28;
+          return (
+            <div key={s.label} style={{ ...shell.card, display: "grid", gap: 6, padding: 10 }}>
+              <div style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid #fde3d5", background: "#fff7f3", color: "var(--color-orange-500)", display: "grid", placeItems: "center" }}>
+                {getEmployeeStatVisual(s.label).icon}
+              </div>
+              <p style={{ ...shell.cardTitle, marginTop: 2, fontSize: 11 }}>{s.label}</p>
+              <p style={{ ...shell.cardValue, color: "var(--color-text-heading)", fontSize: compactValueSize, lineHeight: 1.05, letterSpacing: "-0.01em" }}>{s.value}</p>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--color-orange-500)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                {getEmployeeStatVisual(s.label).cta} <ArrowRight size={13} />
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={shell.sectionGrid}>
+        <section style={shell.card}>
+          <h3 style={shell.sectionTitle}>Appraisal Progress</h3>
+          <Stepper phases={phases || []} />
+        </section>
+        <section>
+          <h3 style={{ ...shell.sectionTitle, marginBottom: 10 }}>Pending Actions</h3>
+          <PendingActions pendingActions={pendingActions || []} />
+        </section>
+      </div>
+
+      <section style={shell.card}>
+        <h3 style={{ ...shell.sectionTitle, marginBottom: 16 }}>Quick Access</h3>
+        <QuickAccess links={quickLinks} />
+      </section>
+    </div>
+  );
+}
+
+function ManagerDashboard({ data }: { data: ManagerDashboardData }) {
   if (!data || data.hasTeam === false) {
     return (
-      <div style={{ maxWidth: 600, margin: "80px auto", textAlign: "center" }}>
-        <div style={{ fontSize: 56, marginBottom: 20 }}>👥</div>
-        <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1f2937", marginBottom: 8 }}>No Team Members Assigned</h2>
-        <p style={{ color: "#9ca3af", fontSize: 14 }}>{data?.message || "You don't have any team members for the active cycle."}</p>
+      <div style={{ ...shell.card, maxWidth: 700, margin: "24px auto", textAlign: "center" }}>
+        <h3 style={{ margin: 0 }}>No Team Members Assigned</h3>
+        <p style={{ color: "var(--color-text-muted)" }}>{data?.message || "You do not have team members for the active cycle."}</p>
       </div>
     );
   }
 
   const { cycle, stats, members, pendingActions } = data;
+  const completedCount = Number(stats?.[0]?.value ?? 0) || 0;
 
   const quickLinks = [
-    { href: "/webpage/manager/team-goals",         label: "Team Goals",       desc: "Approve team member goals",           icon: "✅", color: "#10b981" },
-    { href: "/webpage/manager/team-assessments",    label: "Team Assessments", desc: "Review self-assessments & rate",      icon: "📋", color: "#4f46e5" },
-    { href: "/webpage/manager/competency-ratings",  label: "Competency Ratings", desc: "Rate team competencies",           icon: "⭐", color: "#0891b2" },
-    { href: "/webpage/manager/team-summary",        label: "Team Summary",     desc: "View team performance overview",      icon: "📊", color: "#7c3aed" },
+    { href: "/webpage/manager/team-goals", label: "Team Goals", desc: "Approve team member goals", icon: <Target size={18} /> },
+    {
+      href: "/webpage/assessment/goals/manager-review",
+      label: "Assessment · Goals",
+      desc: "Review team goal self assessments",
+      icon: <ClipboardList size={18} />,
+    },
+    {
+      href: "/webpage/assessment/competency-assessment/manager-review",
+      label: "Assessment · Competency",
+      desc: "Evaluate team competency self assessments",
+      icon: <Star size={18} />,
+    },
+    { href: "/webpage/manager/team-summary", label: "Team Summary", desc: "View overall team performance", icon: <Gauge size={18} /> },
   ];
 
   return (
-    <div style={{ maxWidth: 1200 }}>
-      {/* Banner */}
-      <div style={{ background: "linear-gradient(135deg,#1e1b4b 0%,#4f46e5 50%,#0891b2 100%)", borderRadius: 16, padding: "24px 28px", marginBottom: 24, color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 8px 30px rgba(79,70,229,0.3)" }}>
-        <div>
-          <p style={{ fontSize: 12, fontWeight: 600, opacity: 0.8, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Manager Dashboard</p>
-          <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>{cycle?.name}</h2>
-          <p style={{ opacity: 0.85, fontSize: 14 }}>{cycle?.periodStart} – {cycle?.periodEnd} &nbsp;·&nbsp; {members?.length} team member{members?.length !== 1 ? "s" : ""}</p>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ background: "rgba(255,255,255,0.2)", borderRadius: 12, padding: "10px 20px" }}>
-            <p style={{ fontSize: 28, fontWeight: 800 }}>👥 {members?.length}</p>
-            <p style={{ fontSize: 12, opacity: 0.85 }}>Team Members</p>
-          </div>
-        </div>
-      </div>
+    <div style={shell.page}>
+      <Hero
+        greeting={`${new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening"}, Manager!`}
+        eyebrow="Manager Dashboard"
+        title={cycle?.name || "Appraisal Cycle"}
+        subtitle={`${cycle?.periodStart} – ${cycle?.periodEnd} · ${members?.length || 0} team members`}
+        progress={Math.min(100, Math.round((completedCount / Math.max(members?.length || 1, 1)) * 100))}
+      />
 
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
-        {stats?.map((s: any) => (
-          <div key={s.label} style={{ background: "#fff", borderRadius: 14, padding: "20px", border: "1px solid #ede9fe" }}>
-            <p style={{ fontSize: 12, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", marginBottom: 8 }}>{s.label}</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</p>
+      <div style={shell.stats}>
+        {stats?.map((s) => (
+          <div key={s.label} style={{ ...shell.card, borderTop: "3px solid var(--color-orange-500)", paddingTop: 14 }}>
+            <p style={shell.cardTitle}>{s.label}</p>
+            <p style={{ ...shell.cardValue, fontSize: 24 }}>{s.value}</p>
           </div>
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20, marginBottom: 20 }}>
-        {/* Team Members */}
-        <div style={{ background: "#fff", borderRadius: 14, padding: "24px", border: "1px solid #ede9fe" }}>
-          <h3 style={{ fontWeight: 700, fontSize: 15, color: "#1f2937", marginBottom: 16 }}>Team Members</h3>
-          {members?.map((m: any) => (
-            <div key={m.appraisalId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, marginBottom: 8, border: "1px solid #f3f0ff", background: "#faf8ff" }}>
-              <div style={{ width: 36, height: 36, borderRadius: "50%", background: `linear-gradient(135deg,${m.phaseColor},#4f46e5)`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
-                {m.employeeName?.[0]?.toUpperCase()}
-              </div>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, color: "#1f2937" }}>{m.employeeName}</p>
-                <p style={{ fontSize: 11, color: "#9ca3af" }}>{m.goalCount} goals</p>
-              </div>
-              <span style={{ background: m.phaseColor + "18", color: m.phaseColor, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>
-                {m.phaseLabel}
-              </span>
-              {m.reviewCompleted && m.overallRating && (
-                <span style={{ background: "#dcfce7", color: "#16a34a", borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700 }}>
-                  {Number(m.overallRating).toFixed(1)} ★
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Pending Actions */}
-        <div style={{ background: "#fff", borderRadius: 14, padding: "24px", border: "1px solid #ede9fe" }}>
-          <h3 style={{ fontWeight: 700, fontSize: 15, color: "#1f2937", marginBottom: 16 }}>Pending Actions</h3>
-          {(!pendingActions || pendingActions.length === 0) ? (
-            <div style={{ padding: 20, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
-              <div style={{ fontSize: 28, marginBottom: 8 }}>🎉</div>
-              All caught up — no pending actions
-            </div>
-          ) : pendingActions.map((a: any) => (
-            <Link key={a.id} href={a.href} style={{ textDecoration: "none" }}>
-              <div style={{ display: "flex", gap: 12, marginBottom: 10, padding: "12px 14px", borderRadius: 10, background: a.urgent ? "#fefce8" : "#fafaf9", border: `1px solid ${a.urgent ? "#fef08a" : "#e5e7eb"}`, cursor: "pointer" }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.urgent ? "#f59e0b" : "#9ca3af", marginTop: 5, flexShrink: 0 }} />
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1f2937", marginBottom: 2 }}>{a.title}</p>
-                  <p style={{ fontSize: 11, color: a.urgent ? "#d97706" : "#9ca3af" }}>{a.desc}</p>
+      <div style={shell.sectionGrid}>
+        <section style={shell.card}>
+          <h3 style={shell.sectionTitle}>Team Members</h3>
+          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+            {members?.map((m) => (
+              <div key={m.appraisalId} style={{ border: "1px solid var(--color-border)", borderRadius: 12, padding: 12, display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 10, alignItems: "center", background: "#fff" }}>
+                <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#eef6ff", color: "var(--color-navy-700)", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13 }}>
+                  {m.employeeName?.[0]?.toUpperCase()}
                 </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-heading)", fontWeight: 700 }}>{m.employeeName}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>{m.goalCount} goals</p>
+                </div>
+                <span className="status-pill" style={{ background: "#eef6ff", color: "var(--color-navy-700)" }}>
+                  {m.phaseLabel}
+                </span>
+                {m.reviewCompleted && m.overallRating && (
+                  <span className="status-pill" style={{ background: "rgba(22,163,74,.1)", color: "#16a34a" }}>
+                    {Number(m.overallRating).toFixed(1)} ★
+                  </span>
+                )}
               </div>
-            </Link>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h3 style={{ ...shell.sectionTitle, marginBottom: 12 }}>Pending Actions</h3>
+          <PendingActions pendingActions={pendingActions || []} dueLabel="Action" />
+        </section>
       </div>
 
-      {/* Quick Access */}
-      <div style={{ background: "#fff", borderRadius: 14, padding: "24px", border: "1px solid #ede9fe" }}>
-        <h3 style={{ fontWeight: 700, fontSize: 15, color: "#1f2937", marginBottom: 16 }}>Quick Access</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
-          {quickLinks.map((q) => (
-            <Link key={q.href} href={q.href} style={{ textDecoration: "none" }}>
-              <div style={{ padding: "18px", borderRadius: 12, border: "1px solid #ede9fe", background: "#faf8ff" }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>{q.icon}</div>
-                <p style={{ fontWeight: 700, fontSize: 13, color: q.color, marginBottom: 4 }}>{q.label}</p>
-                <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.4 }}>{q.desc}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
+      <section style={shell.card}>
+        <h3 style={{ ...shell.sectionTitle, marginBottom: 16 }}>Quick Access</h3>
+        <QuickAccess links={quickLinks} />
+      </section>
+
+      <section style={{ ...shell.card, display: "none" }} aria-hidden>
+        <Users size={18} />
+      </section>
     </div>
   );
 }

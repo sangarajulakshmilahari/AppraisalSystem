@@ -1,6 +1,15 @@
 // app/webpage/goals/page.tsx
 "use client";
-import { useState, useEffect } from "react";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Send,
+  Target,
+  X,
+} from "lucide-react";
 
 type Goal = {
   id: number;
@@ -13,90 +22,157 @@ type Goal = {
   expected_monthly: string | null;
   weight: number;
   status: "draft" | "submitted" | "approved" | "rejected";
+  is_custom?: number;
+  created_by?: string;
 };
 
-type Designation = { id: number; designation_name: string };
+type Designation = {
+  designation_name: string;
+};
 
-const BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  approved:  { bg: "#dcfce7", color: "#16a34a", label: "Approved" },
-  submitted: { bg: "#dbeafe", color: "#1d4ed8", label: "Submitted" },
-  draft:     { bg: "#f3f4f6", color: "#6b7280", label: "Draft" },
-  rejected:  { bg: "#fef2f2", color: "#ef4444", label: "Rejected" },
+type AaramEmployee = {
+  name?: string;
+  employeeId?: string;
+};
+
+type GoalForm = Partial<Goal> & {
+  area_id?: number | null;
+  description?: string | null;
+  target?: string | null;
+  timeline?: string | null;
+};
+
+const BADGE: Record<string, { className: string; label: string }> = {
+  approved: { className: "status-pill status-approved", label: "Approved" },
+  submitted: { className: "status-pill status-submitted", label: "Submitted" },
+  draft: { className: "status-pill status-draft", label: "Draft" },
+  rejected: { className: "status-pill status-rejected", label: "Rejected" },
 };
 
 const AREA_COLORS: Record<string, string> = {
-  Primary: "#7c3aed",
-  "Stretch / Growth Opportunities": "#0891b2",
-  "Value Adds": "#059669",
-  Learning: "#d97706",
-  "Process Adherence": "#1d4ed8",
-  "Work from office": "#6b7280",
+  Primary: "#1f3a68",
+  "Stretch / Growth Opportunities": "#0f766e",
+  "Value Adds": "#166534",
+  Learning: "#b45309",
+  "Process Adherence": "#334155",
+  "Work from office": "#64748b",
+};
+
+const styles: Record<string, React.CSSProperties> = {
+  page: { maxWidth: 1320, display: "grid", gap: 16 },
+  card: {
+    background: "#fff",
+    border: "1px solid var(--color-border)",
+    borderRadius: 16,
+    boxShadow: "var(--shadow-soft)",
+  },
+  headerRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 },
+  title: { margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" },
+  subtitle: { margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 },
+  topActions: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
+  tableWrap: {
+    overflowX: "auto",
+    border: "1px solid var(--color-border)",
+    borderRadius: 16,
+    background: "#fff",
+    boxShadow: "var(--shadow-soft)",
+  },
+  table: { width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1120 },
+  th: {
+    position: "sticky",
+    top: 0,
+    zIndex: 2,
+    background: "#fff",
+    color: "var(--color-text-heading)",
+    textTransform: "uppercase",
+    letterSpacing: ".05em",
+    fontSize: 11,
+    fontWeight: 700,
+    textAlign: "left",
+    padding: "12px 14px",
+    borderBottom: "1px solid var(--color-border)",
+    borderRight: "1px solid #f1f5f9",
+    whiteSpace: "nowrap",
+  },
+  td: {
+    padding: "12px 14px",
+    fontSize: 13,
+    color: "var(--color-text-body)",
+    borderBottom: "1px solid #f1f5f9",
+    borderRight: "1px solid #f8fafc",
+    verticalAlign: "top",
+  },
+  input: {
+    width: "100%",
+    minHeight: 38,
+    border: "1px solid var(--color-border)",
+    borderRadius: 10,
+    padding: "0 10px",
+    fontSize: 13,
+    color: "var(--color-text-body)",
+    outline: "none",
+  },
 };
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [designations, setDesignations] = useState<Designation[]>([]);
-  const [selectedDesignation, setSelectedDesignation] = useState<number | null>(null);
-  const [currentDesignation, setCurrentDesignation] = useState<Designation | null>(null);
+  const [designation, setDesignation] = useState<Designation | null>(null);
+  const [projectRole, setProjectRole] = useState<string | null>(null);
+  const [aaramEmployee, setAaramEmployee] = useState<AaramEmployee | null>(null);
   const [goalsEditable, setGoalsEditable] = useState(false);
   const [cycleName, setCycleName] = useState("");
   const [goalsSubmitted, setGoalsSubmitted] = useState(false);
   const [goalsApproved, setGoalsApproved] = useState(false);
   const [goalWindowOpen, setGoalWindowOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadingTemplate, setLoadingTemplate] = useState(false);
   const [error, setError] = useState("");
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState<any>({});
+  const [form, setForm] = useState<GoalForm>({});
   const [showConfirm, setShowConfirm] = useState(false);
+  const [rejectingGoalId, setRejectingGoalId] = useState<number | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/employee/goals").then((r) => r.json()),
-      fetch("/api/employee/kpi-designations").then((r) => r.json()),
-    ])
-      .then(([goalsData, desData]) => {
-        if (goalsData.goals) setGoals(goalsData.goals);
-        if (goalsData.cycle) {
-          setCycleName(goalsData.cycle.name || "");
-          setGoalWindowOpen(goalsData.cycle.goalWindowOpen || false);
+    fetch("/api/employee/goals")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.goals) setGoals(data.goals);
+        if (data.cycle) {
+          setCycleName(data.cycle.name || "");
+          setGoalWindowOpen(data.cycle.goalWindowOpen || false);
         }
-        if (goalsData.goalsEditable !== undefined) setGoalsEditable(goalsData.goalsEditable);
-        if (goalsData.appraisal) {
-          setGoalsSubmitted(!!goalsData.appraisal.goalsSubmittedAt);
-          setGoalsApproved(!!goalsData.appraisal.goalsApprovedAt);
-          if (goalsData.appraisal.designationId) setSelectedDesignation(goalsData.appraisal.designationId);
+        if (data.goalsEditable !== undefined) setGoalsEditable(data.goalsEditable);
+        if (data.appraisal) {
+          setGoalsSubmitted(!!data.appraisal.goalsSubmittedAt);
+          setGoalsApproved(!!data.appraisal.goalsApprovedAt);
         }
-        if (goalsData.designation) setCurrentDesignation(goalsData.designation);
-        if (desData.designations) setDesignations(desData.designations);
+        if (data.designation) setDesignation(data.designation);
+        if (data.projectRole) setProjectRole(data.projectRole);
+        if (data.aaramEmployee) setAaramEmployee(data.aaramEmployee);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  const totalWeight = goals.reduce((s, g) => s + (g.weight || 0), 0);
+  const totalWeight = useMemo(() =>
+    goals.reduce((s, g) => {
+      // Include weight if:
+      // 1. Goal is not rejected (status !== 'rejected')
+      // 2. AND (goal is custom OR goal is accepted/submitted/draft)
+      // Actually simpler: exclude rejected goals only
+      if (g.status === 'rejected') {
+        return s; // Don't add weight for rejected goals
+      }
+      return s + (g.weight || 0);
+    }, 0),
+    [goals]
+  );
 
-  const loadTemplate = async (designationId: number) => {
-    setError("");
-    setLoadingTemplate(true);
-    try {
-      const res = await fetch("/api/employee/goals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designation_id: designationId }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error); return; }
-      setGoals(data.goals);
-      setSelectedDesignation(designationId);
-      const des = designations.find((d) => d.id === designationId);
-      if (des) setCurrentDesignation(des);
-    } catch (e: any) { setError(e.message); }
-    finally { setLoadingTemplate(false); }
+  const cancelEdit = () => {
+    setEditId(null);
+    setForm({});
   };
 
-  const startEdit = (g: Goal) => { setEditId(g.id); setForm({ ...g }); };
-  const cancelEdit = () => { setEditId(null); setForm({}); };
   const saveEdit = async () => {
     setError("");
     try {
@@ -106,10 +182,94 @@ export default function GoalsPage() {
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error); return; }
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
       setGoals(goals.map((g) => (g.id === editId ? data.goal : g)));
       setEditId(null);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update goal");
+    }
+  };
+
+  const addCustomGoal = async () => {
+    setError("");
+    try {
+      const res = await fetch("/api/employee/goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add_custom_goal" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to add custom goal");
+        return;
+      }
+
+      const updatedGoals: Goal[] = data.goals || [];
+      setGoals(updatedGoals);
+
+      // Make the newly added custom goal immediately editable.
+      const newestCustomDraft = [...updatedGoals]
+        .reverse()
+        .find((g) => !!g.is_custom && g.status === "draft");
+
+      if (newestCustomDraft) {
+        setEditId(newestCustomDraft.id);
+        setForm({ ...newestCustomDraft });
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to add custom goal");
+    }
+  };
+
+  const acceptGoal = async (goalId: number) => {
+    setError("");
+    try {
+      const res = await fetch(`/api/employee/goals`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goalId, action: "accept" }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to accept goal");
+        return;
+      }
+
+      if (data.goals) {
+        setGoals(data.goals);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to accept goal");
+    }
+  };
+
+  const rejectGoal = async (goalId: number, reason: string) => {
+    setError("");
+    try {
+      const res = await fetch(`/api/employee/goals`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goalId, action: "reject", reason }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to reject goal");
+        return;
+      }
+
+      if (data.goals) {
+        setGoals(data.goals);
+      }
+      setRejectingGoalId(null);
+      setRejectionReason("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to reject goal");
+    }
   };
 
   const handleSubmit = async () => {
@@ -117,15 +277,20 @@ export default function GoalsPage() {
     try {
       const res = await fetch("/api/employee/goals/submit", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) { setError(data.error); setShowConfirm(false); return; }
+      if (!res.ok) {
+        setError(data.error);
+        setShowConfirm(false);
+        return;
+      }
       setGoalsSubmitted(true);
       setGoalsEditable(false);
-      setGoals(goals.map((g) => ({ ...g, status: g.status === "draft" ? "submitted" as const : g.status })));
+      setGoals(goals.map((g) => ({ ...g, status: g.status === "draft" ? "submitted" : g.status })));
       setShowConfirm(false);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to submit goals");
+    }
   };
 
-  // Group goals by area for row-spanning display
   const getAreaSpans = () => {
     const spans: { area: string; startIdx: number; count: number }[] = [];
     let currentArea: string | null = null;
@@ -140,92 +305,148 @@ export default function GoalsPage() {
     }
     return spans;
   };
+
   const areaSpans = getAreaSpans();
   const isFirstInArea = (idx: number) => areaSpans.some((s) => s.startIdx === idx);
   const getAreaSpan = (idx: number) => areaSpans.find((s) => s.startIdx === idx);
 
-  const inp: React.CSSProperties = {
-    width: "100%", border: "1px solid #d8b4fe", borderRadius: 6,
-    padding: "5px 8px", fontSize: 12, outline: "none", background: "#faf8ff",
-  };
-
-  if (loading) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "#9ca3af" }}>Loading goals...</div>;
+  if (loading) {
+    return (
+      <div style={{ ...styles.card, minHeight: 180, display: "grid", placeItems: "center", color: "var(--color-text-muted)" }}>
+        Loading goals...
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: 1300 }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+    <div style={styles.page}>
+      <section style={styles.headerRow}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1f2937" }}>My Goals</h2>
-          <p style={{ color: "#9ca3af", fontSize: 13, marginTop: 2 }}>
-            {cycleName} · Total Weight: <span style={{ color: totalWeight === 100 ? "#10b981" : "#f59e0b", fontWeight: 700 }}>{totalWeight}%</span>
-            {currentDesignation && <span> · Designation: <span style={{ color: "#7c3aed", fontWeight: 600 }}>{currentDesignation.designation_name}</span></span>}
+          <h1 style={styles.title}>My Goals</h1>
+          <p style={styles.subtitle}>
+            {cycleName} · Total Weight: <strong style={{ color: totalWeight === 100 ? "#16a34a" : "#d97706" }}>{totalWeight}%</strong>
+            {designation && (
+              <span>
+                {" "}· Designation: <strong style={{ color: "var(--color-text-heading)" }}>{designation.designation_name}</strong>
+              </span>
+            )}
+            {projectRole && !designation && (
+              <span>
+                {" "}· Project Role: <strong style={{ color: "#d97706" }}>{projectRole}</strong>
+              </span>
+            )}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ background: "#f5f3ff", border: "1px solid #ede9fe", borderRadius: 10, padding: "6px 14px", fontSize: 12, color: "#7c3aed", fontWeight: 600 }}>
-            Goal window: <span style={{ color: goalWindowOpen ? "#10b981" : "#ef4444" }}>{goalWindowOpen ? "Open" : "Closed"}</span>
-          </div>
+
+        <div style={styles.topActions}>
+          {goalsEditable && !goalsSubmitted && (
+            <button className="btn btn-secondary" onClick={addCustomGoal}>
+              Add Custom Goal
+            </button>
+          )}
+
+          <span
+            className="status-pill"
+            style={{
+              background: goalWindowOpen ? "rgba(22,163,74,.1)" : "rgba(220,38,38,.1)",
+              color: goalWindowOpen ? "#16a34a" : "#dc2626",
+            }}
+          >
+            Goal window: {goalWindowOpen ? "Open" : "Closed"}
+          </span>
+
           {goalsEditable && goals.length > 0 && !goalsSubmitted && (
-            <button onClick={() => setShowConfirm(true)} disabled={totalWeight !== 100} style={{ background: totalWeight === 100 ? "linear-gradient(135deg,#10b981,#059669)" : "#e5e7eb", color: totalWeight === 100 ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "8px 18px", fontWeight: 600, fontSize: 13, cursor: totalWeight === 100 ? "pointer" : "not-allowed" }}>
+            <button className="btn btn-primary" onClick={() => setShowConfirm(true)} disabled={totalWeight !== 100}>
               Submit Goals
             </button>
           )}
+
           {goalsSubmitted && !goalsApproved && (
-            <div style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 13 }}>📤 Submitted</div>
+            <div className="status-pill status-submitted" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px" }}>
+              <Send size={14} /> Submitted
+            </div>
           )}
+
           {goalsApproved && (
-            <div style={{ background: "#dcfce7", color: "#16a34a", borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 13 }}>✓ Approved</div>
+            <div className="status-pill status-approved" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px" }}>
+              <CheckCircle2 size={14} /> Approved
+            </div>
           )}
         </div>
-      </div>
+      </section>
 
       {error && (
-        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 16px", marginBottom: 16, color: "#dc2626", fontSize: 13, display: "flex", justifyContent: "space-between" }}>
+        <div
+          style={{
+            ...styles.card,
+            padding: "12px 14px",
+            borderColor: "#fecaca",
+            background: "#fff5f5",
+            color: "#b91c1c",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <span>{error}</span>
-          <button onClick={() => setError("")} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer" }}>✕</button>
+          <button aria-label="Close" onClick={() => setError("")} style={{ border: 0, background: "transparent", color: "#b91c1c", cursor: "pointer" }}>
+            <X size={16} />
+          </button>
         </div>
       )}
 
-      {/* Designation Selector */}
-      {goals.length === 0 && goalsEditable && (
-        <div style={{ background: "#fff", borderRadius: 16, padding: "32px", border: "1px solid #ede9fe", textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🎯</div>
-          <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>Select Your Designation</h3>
-          <p style={{ color: "#9ca3af", fontSize: 14, marginBottom: 24 }}>Choose your role to load pre-defined KPI goals</p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            {designations.map((d) => (
-              <button key={d.id} onClick={() => loadTemplate(d.id)} disabled={loadingTemplate} style={{ background: "#fff", color: "#374151", border: "2px solid #ede9fe", borderRadius: 12, padding: "14px 28px", fontSize: 14, fontWeight: 700, cursor: loadingTemplate ? "wait" : "pointer" }}>
-                {d.designation_name}
-              </button>
-            ))}
+      {goals.length === 0 && !designation && (
+        <section style={{ ...styles.card, padding: 28, textAlign: "center" }}>
+          <div style={{ display: "grid", placeItems: "center", marginBottom: 12 }}>
+            <AlertTriangle size={36} color="#d97706" />
           </div>
-        </div>
+          <h3 style={{ margin: 0, fontSize: 22, color: "var(--color-text-heading)" }}>No Project Role Found</h3>
+          <p style={{ margin: "8px auto 0", maxWidth: 640, color: "var(--color-text-muted)", fontSize: 14 }}>
+            Your project role could not be detected from AARAM. Please contact HR to assign your project role in the system, or check that your Keycloak account is linked to your AARAM profile.
+          </p>
+          {projectRole && (
+            <p style={{ marginTop: 10, color: "#b45309", fontSize: 13 }}>
+              Detected role &quot;{projectRole}&quot; does not match any KPI designation. Contact HR.
+            </p>
+          )}
+        </section>
       )}
 
-      {/* Change designation */}
-      {goals.length > 0 && goalsEditable && !goalsSubmitted && (
-        <div style={{ background: "#f5f3ff", borderRadius: 12, padding: "10px 18px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid #ede9fe" }}>
-          <p style={{ fontSize: 13, color: "#7c3aed", fontWeight: 600 }}>Designation: {currentDesignation?.designation_name}</p>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <select value={selectedDesignation || ""} onChange={(e) => { if (e.target.value) loadTemplate(Number(e.target.value)); }} style={{ border: "1px solid #c4b5fd", borderRadius: 8, padding: "5px 10px", fontSize: 12, outline: "none", background: "#fff" }}>
-              <option value="" disabled>Change...</option>
-              {designations.map((d) => <option key={d.id} value={d.id}>{d.designation_name}</option>)}
-            </select>
-            <span style={{ fontSize: 11, color: "#9ca3af" }}>⚠️ Resets draft goals</span>
-          </div>
+      {/* {designation && (
+        <div
+          style={{
+            ...styles.card,
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            borderColor: "#ffd7c2",
+            background: "#fff8f3",
+          }}
+        >
+          <Target size={18} color="#f26522" />
+          <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-heading)", fontWeight: 600 }}>
+            KPI template aligned for {designation.designation_name}
+            {aaramEmployee?.name ? <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}> · {aaramEmployee.name} ({aaramEmployee.employeeId})</span> : null}
+          </p>
         </div>
-      )}
+      )} */}
 
-      {/* Goals Table — Excel layout */}
       {goals.length > 0 && (
-        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #ede9fe", overflow: "hidden", boxShadow: "0 4px 16px rgba(124,58,237,0.08)" }}>
-          {/* Header */}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <section style={styles.tableWrap}>
+          <table style={styles.table}>
             <thead>
-              <tr style={{ background: "linear-gradient(90deg,#7c3aed,#4f46e5)" }}>
-                {["Area", "KPI", "Measurable Metric / Target", "Expected in a month", "Weight (%)", "Status", ""].map((h) => (
-                  <th key={h} style={{ color: "#fff", padding: "12px 14px", fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", textAlign: "left", borderRight: "1px solid rgba(255,255,255,0.15)" }}>
+              <tr>
+                {[
+                  "Area",
+                  "KPI",
+                  "Measurable Metric / Target",
+                  "Expected in a month",
+                  "Weight (%)",
+                  "Status",
+                  "Actions",
+                ].map((h) => (
+                  <th key={h} style={styles.th}>
                     {h}
                   </th>
                 ))}
@@ -235,69 +456,181 @@ export default function GoalsPage() {
               {goals.map((g, idx) => {
                 const areaSpan = getAreaSpan(idx);
                 const showArea = isFirstInArea(idx);
-                const areaColor = AREA_COLORS[g.area || ""] || "#7c3aed";
+                const areaColor = AREA_COLORS[g.area || ""] || "#1f3a68";
                 const isEditing = editId === g.id;
-
                 return (
-                  <tr key={g.id} style={{ background: idx % 2 === 0 ? "#fff" : "#faf8ff", borderBottom: "1px solid #f3f0ff" }}>
-                    {/* Area cell with rowSpan */}
+                  <tr key={g.id} style={{ background: idx % 2 === 0 ? "#fff" : "#fcfdff" }}>
                     {showArea && (
-                      <td rowSpan={areaSpan!.count} style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: areaColor, verticalAlign: "top", borderRight: "1px solid #f3f0ff", background: areaColor + "08", width: 140, borderBottom: "2px solid " + areaColor + "30" }}>
+                      <td
+                        rowSpan={areaSpan?.count}
+                        style={{
+                          ...styles.td,
+                          width: 160,
+                          background: `${areaColor}0f`,
+                          color: areaColor,
+                          fontWeight: 700,
+                          borderRight: `1px solid ${areaColor}25`,
+                        }}
+                      >
                         {g.area || "—"}
                       </td>
                     )}
 
-                    {/* KPI */}
-                    <td style={{ padding: "10px 14px", fontSize: 13, color: "#374151", borderRight: "1px solid #f3f0ff", width: 200 }}>
+                    <td style={{ ...styles.td, width: 260 }}>
                       {isEditing ? (
-                        <input value={form.kpi ?? ""} onChange={(e) => setForm({ ...form, kpi: e.target.value })} style={inp} />
+                        <input
+                          value={form.kpi ?? ""}
+                          onChange={(e) => setForm({ ...form, kpi: e.target.value })}
+                          style={styles.input}
+                        />
                       ) : (
-                        g.kpi || "—"
+                        <>
+                          <span>{g.kpi || "—"}</span>
+                          {!!g.is_custom && (
+                            <span className="status-pill" style={{ marginLeft: 8, background: "#fff1e9", color: "#f26522" }}>
+                              Custom
+                            </span>
+                          )}
+                        </>
                       )}
                     </td>
 
-                    {/* Metric */}
-                    <td style={{ padding: "10px 14px", fontSize: 12, color: "#6b7280", borderRight: "1px solid #f3f0ff" }}>
+                    <td style={styles.td}>
                       {isEditing ? (
-                        <input value={form.metric ?? ""} onChange={(e) => setForm({ ...form, metric: e.target.value })} style={inp} />
+                        <input
+                          value={form.metric ?? ""}
+                          onChange={(e) => setForm({ ...form, metric: e.target.value })}
+                          style={styles.input}
+                        />
                       ) : (
                         g.metric || "—"
                       )}
                     </td>
 
-                    {/* Expected in a month */}
-                    <td style={{ padding: "10px 14px", fontSize: 12, color: "#374151", fontWeight: 600, borderRight: "1px solid #f3f0ff", width: 140 }}>
+                    <td style={{ ...styles.td, width: 220 }}>
                       {isEditing ? (
-                        <input value={form.expected_monthly ?? ""} onChange={(e) => setForm({ ...form, expected_monthly: e.target.value })} style={inp} />
+                        <input
+                          value={form.expected_monthly ?? ""}
+                          onChange={(e) => setForm({ ...form, expected_monthly: e.target.value })}
+                          style={styles.input}
+                        />
                       ) : (
                         g.expected_monthly || g.target || "—"
                       )}
                     </td>
 
-                    {/* Weight */}
-                    <td style={{ padding: "10px 14px", textAlign: "center", borderRight: "1px solid #f3f0ff", width: 80 }}>
+                    <td style={{ ...styles.td, width: 110, textAlign: "center" }}>
                       {isEditing ? (
-                        <input type="number" value={form.weight ?? 0} onChange={(e) => setForm({ ...form, weight: +e.target.value })} style={{ ...inp, textAlign: "center" }} min={0} max={100} />
+                        <input
+                          type="number"
+                          value={form.weight ?? 0}
+                          onChange={(e) => setForm({ ...form, weight: +e.target.value })}
+                          style={{ ...styles.input, textAlign: "center" }}
+                          min={0}
+                          max={100}
+                        />
                       ) : (
-                        <span style={{ fontSize: 14, fontWeight: 800, color: g.weight > 0 ? "#7c3aed" : "#d1d5db" }}>{g.weight || ""}</span>
+                        <strong style={{ color: g.weight > 0 ? "var(--color-text-heading)" : "#cbd5e1" }}>{g.weight || ""}</strong>
                       )}
                     </td>
 
-                    {/* Status */}
-                    <td style={{ padding: "10px 14px", borderRight: "1px solid #f3f0ff", width: 80 }}>
-                      <span style={{ background: BADGE[g.status].bg, color: BADGE[g.status].color, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>{BADGE[g.status].label}</span>
+                    <td style={{ ...styles.td, width: 110 }}>
+                      <span className={BADGE[g.status].className}>{BADGE[g.status].label}</span>
                     </td>
 
-                    {/* Actions */}
-                    <td style={{ padding: "10px 10px", width: 70 }}>
+                    <td style={{ ...styles.td, width: 190 }}>
                       {isEditing ? (
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button onClick={saveEdit} style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✓</button>
-                          <button onClick={cancelEdit} style={{ background: "#f3f4f6", color: "#6b7280", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✕</button>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button className="btn btn-primary" onClick={saveEdit} style={{ minHeight: 34, padding: "0 10px" }}>
+                            <Check size={14} />
+                          </button>
+                          <button className="btn btn-secondary" onClick={cancelEdit} style={{ minHeight: 34, padding: "0 10px" }}>
+                            <X size={14} />
+                          </button>
                         </div>
                       ) : (
-                        g.status === "draft" && goalsEditable && (
-                          <button onClick={() => startEdit(g)} style={{ background: "none", border: "1px solid #d8b4fe", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: "#7c3aed", cursor: "pointer" }}>Edit</button>
+                        g.status === "draft" &&
+                        goalsEditable &&
+                        g.created_by &&
+                        (g.created_by.toLowerCase().includes('manager') ||
+                         g.created_by.toLowerCase().includes('mgr') ||
+                         g.created_by.toLowerCase().includes('manger')) && (
+                          <div style={{ display: "flex", gap: 8 }}>
+                            {rejectingGoalId === g.id ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 200 }}>
+                                <textarea
+                                  placeholder="Enter rejection reason..."
+                                  value={rejectionReason}
+                                  onChange={(e) => setRejectionReason(e.target.value)}
+                                  style={{
+                                    padding: 8,
+                                    border: "1px solid #fecaca",
+                                    borderRadius: 6,
+                                    fontSize: 12,
+                                    minHeight: 60,
+                                  }}
+                                />
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button
+                                    className="btn btn-primary"
+                                    onClick={() => rejectGoal(g.id, rejectionReason)}
+                                    disabled={!rejectionReason.trim()}
+                                    style={{ minHeight: 34, padding: "0 10px", fontSize: 12 }}
+                                  >
+                                    Submit Rejection
+                                  </button>
+                                  <button
+                                    className="btn btn-secondary"
+                                    onClick={() => {
+                                      setRejectingGoalId(null);
+                                      setRejectionReason("");
+                                    }}
+                                    style={{ minHeight: 34, padding: "0 10px", fontSize: 12 }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  className="btn btn-ghost"
+                                  onClick={() => acceptGoal(g.id)}
+                                  style={{
+                                    minHeight: 34,
+                                    padding: "0 10px",
+                                    border: "1px solid #86efac",
+                                    color: "#166534",
+                                    background: "#f0fdf4",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <Check size={14} /> Accept
+                                </button>
+                                <button
+                                  className="btn btn-ghost"
+                                  onClick={() => {
+                                    setRejectingGoalId(g.id);
+                                    setRejectionReason("");
+                                  }}
+                                  style={{
+                                    minHeight: 34,
+                                    padding: "0 10px",
+                                    border: "1px solid #fecaca",
+                                    color: "#b91c1c",
+                                    background: "#fff5f5",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <X size={14} /> Reject
+                                </button>
+                              </>
+                            )}
+                          </div>
                         )
                       )}
                     </td>
@@ -305,33 +638,52 @@ export default function GoalsPage() {
                 );
               })}
 
-              {/* Total row */}
-              <tr style={{ background: "#f5f3ff", borderTop: "2px solid #7c3aed" }}>
-                <td colSpan={3} />
-                <td style={{ padding: "12px 14px", fontSize: 13, fontWeight: 800, color: "#374151", textAlign: "right" }}>Total</td>
-                <td style={{ padding: "12px 14px", textAlign: "center" }}>
-                  <span style={{ fontSize: 16, fontWeight: 900, color: totalWeight === 100 ? "#10b981" : "#ef4444" }}>{totalWeight}</span>
+              <tr style={{ background: "#fff8f3" }}>
+                <td colSpan={3} style={{ ...styles.td, borderBottom: 0 }} />
+                <td style={{ ...styles.td, fontWeight: 700, textAlign: "right", color: "var(--color-text-heading)", borderBottom: 0 }}>
+                  Total
                 </td>
-                <td colSpan={2} />
+                <td style={{ ...styles.td, textAlign: "center", borderBottom: 0 }}>
+                  <strong style={{ color: totalWeight === 100 ? "#16a34a" : "#dc2626", fontSize: 15 }}>{totalWeight}</strong>
+                </td>
+                <td colSpan={2} style={{ ...styles.td, borderBottom: 0 }} />
               </tr>
             </tbody>
           </table>
-        </div>
+        </section>
       )}
 
-      {/* Submit Modal */}
       {showConfirm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 32, width: 420 }}>
-            <div style={{ fontSize: 36, marginBottom: 16 }}>🎯</div>
-            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Submit Goals for Approval?</h3>
-            <p style={{ color: "#6b7280", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Submitting <strong>{goals.length} goals</strong> ({currentDesignation?.designation_name}) with total weight <strong>{totalWeight}%</strong>. You cannot edit after submission.
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,31,61,.38)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 100,
+            padding: 16,
+          }}
+        >
+          <div style={{ ...styles.card, width: "100%", maxWidth: 460, padding: 28 }} role="dialog" aria-modal="true" aria-label="Submit goals confirmation">
+            <div style={{ display: "grid", placeItems: "center", marginBottom: 12 }}>
+              <Target size={34} color="#f26522" />
+            </div>
+            <h3 style={{ margin: 0, fontSize: 24, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Submit Goals for Approval</h3>
+            <p style={{ margin: "10px 0 0", fontSize: 14, color: "var(--color-text-muted)", lineHeight: 1.6 }}>
+              Submitting <strong>{goals.length} goals</strong>
+              {designation ? <> ({designation.designation_name})</> : null} with total weight <strong>{totalWeight}%</strong>. You cannot edit after submission.
             </p>
-            {error && <p style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>{error}</p>}
-            <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={handleSubmit} style={{ flex: 1, background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: 12, fontWeight: 700, cursor: "pointer" }}>Confirm & Submit</button>
-              <button onClick={() => setShowConfirm(false)} style={{ flex: 1, background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 10, padding: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+
+            {error && <p style={{ color: "#b91c1c", fontSize: 13, marginTop: 10 }}>{error}</p>}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+              <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleSubmit}>
+                Confirm & Submit
+              </button>
             </div>
           </div>
         </div>

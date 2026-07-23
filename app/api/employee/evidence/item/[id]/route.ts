@@ -18,7 +18,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
        FROM goal_evidence ge
        JOIN employee_goals eg ON ge.goal_id = eg.id
        JOIN employee_appraisals ea ON eg.appraisal_id = ea.id
-       WHERE ge.id = ? AND ea.employee_id = ?`,
+       WHERE ge.id = ? AND ea.employee_id = ? AND eg.is_deleted = 0`,
       [id, user.id]
     );
     const ev = (rows as any[])[0];
@@ -58,7 +58,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
        FROM goal_evidence ge
        JOIN employee_goals eg ON ge.goal_id = eg.id
        JOIN employee_appraisals ea ON eg.appraisal_id = ea.id
-       WHERE ge.id = ? AND ea.employee_id = ?`,
+       WHERE ge.id = ? AND ea.employee_id = ? AND eg.is_deleted = 0`,
       [id, user.id]
     );
     const ev = (rows as any[])[0];

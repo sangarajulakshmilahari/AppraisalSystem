@@ -25,26 +25,56 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ app
       return NextResponse.json({ error: "Goals already approved" }, { status: 400 });
     }
 
-    // Approve all submitted goals
-    await pool.query(
-      "UPDATE employee_goals SET status = 'approved' WHERE appraisal_id = ? AND status = 'submitted'",
-      [appraisalId]
-    );
+    const body = await req.json();
+    const { goalId, action, reason } = body || {};
 
-    // Update appraisal
-    await pool.query(
-      `UPDATE employee_appraisals 
-       SET goals_approved_at = NOW(), current_phase = 'self_assessment'
-       WHERE id = ?`,
-      [appraisalId]
-    );
+    // If goalId is provided, approve/reject individual goal
+    if (goalId) {
+      if (action === 'approve') {
+        await pool.query(
+          "UPDATE employee_goals SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND appraisal_id = ? AND is_deleted = 0",
+          [user.id, goalId, appraisalId]
+        );
+      } else if (action === 'reject') {
+        if (!reason) {
+          return NextResponse.json({ error: "Reason is required for rejection" }, { status: 400 });
+        }
+        await pool.query(
+          "UPDATE employee_goals SET status = 'rejected', rejection_reason = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND appraisal_id = ? AND is_deleted = 0",
+          [reason, user.id, goalId, appraisalId]
+        );
 
-    // Notify employee
-    await pool.query(
-      `INSERT INTO notifications (user_id, title, message, type, link_url)
-       VALUES (?, 'Goals Approved', ?, 'success', '/webpage/goals')`,
-      [appraisal.employee_id, `Your manager ${user.username} has approved all your goals. You can now proceed to self-assessment.`]
-    );
+        // Notify employee
+        await pool.query(
+          `INSERT INTO notifications (user_id, title, message, type, link_url)
+           VALUES (?, 'Goal Rejected', ?, 'warning', '/webpage/goals')`,
+          [appraisal.employee_id, `Your manager ${user.username} rejected goal #${goalId}. Reason: ${reason}`]
+        );
+      } else {
+        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+      }
+    } else {
+      // Approve all submitted goals (backward compatibility)
+      await pool.query(
+        "UPDATE employee_goals SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE appraisal_id = ? AND status = 'submitted' AND is_deleted = 0",
+        [user.id, appraisalId]
+      );
+
+      // Update appraisal
+      await pool.query(
+        `UPDATE employee_appraisals
+         SET goals_approved_at = NOW(), current_phase = 'self_assessment'
+         WHERE id = ?`,
+        [appraisalId]
+      );
+
+      // Notify employee
+      await pool.query(
+        `INSERT INTO notifications (user_id, title, message, type, link_url)
+         VALUES (?, 'Goals Approved', ?, 'success', '/webpage/goals')`,
+        [appraisal.employee_id, `Your manager ${user.username} has approved all your goals. You can now proceed to self-assessment.`]
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

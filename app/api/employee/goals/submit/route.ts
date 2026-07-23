@@ -21,15 +21,21 @@ export async function POST() {
 
     // Check there's at least one goal
     const [goals] = await pool.query(
-      "SELECT id, weight FROM employee_goals WHERE appraisal_id = ?",
+      "SELECT id, weight, status FROM employee_goals WHERE appraisal_id = ? AND is_deleted = 0",
       [appraisal.id]
     );
     if ((goals as any[]).length === 0) {
       return NextResponse.json({ error: "Add at least one goal before submitting" }, { status: 400 });
     }
 
-    // Check total weight = 100
-    const totalWeight = (goals as any[]).reduce((sum: number, g: any) => sum + (g.weight || 0), 0);
+    // Check total weight = 100 (exclude rejected goals)
+    const totalWeight = (goals as any[]).reduce((sum: number, g: any) => {
+      // Exclude rejected goals from total weight calculation
+      if (g.status === 'rejected') {
+        return sum;
+      }
+      return sum + (g.weight || 0);
+    }, 0);
     if (totalWeight !== 100) {
       return NextResponse.json(
         { error: `Total weight must be 100%. Current total: ${totalWeight}%` },
@@ -39,7 +45,9 @@ export async function POST() {
 
     // Update all draft goals to submitted
     await pool.query(
-      `UPDATE employee_goals SET status = 'submitted' WHERE appraisal_id = ? AND status = 'draft'`,
+      `UPDATE employee_goals
+       SET status = 'submitted'
+       WHERE appraisal_id = ? AND status = 'draft' AND is_deleted = 0`,
       [appraisal.id]
     );
 

@@ -1,17 +1,59 @@
 // app/webpage/manager/development-plans/page.tsx
 "use client";
-import { useState, useEffect } from "react";
 
-const AREA_ICONS: Record<string, string> = { Technical: "💻", Domain: "🏭", "Soft Skill": "🗣️", Others: "📌" };
-const AREA_COLORS: Record<string, string> = { Technical: "#7c3aed", Domain: "#0891b2", "Soft Skill": "#059669", Others: "#d97706" };
+import { useEffect, useState } from "react";
+import { Building2, Code2, Pin, TrendingUp, Volume2 } from "lucide-react";
+
+type Entry = {
+  id: number;
+  area_name: string;
+  action: string;
+  timeline: string | null;
+  responsible: string;
+  status: "not_started" | "in_progress" | "completed";
+};
+
+type Member = {
+  appraisalId: number;
+  employeeName: string;
+  total: number;
+  completed: number;
+  inProgress: number;
+  entries: Entry[];
+};
+
+const AREA_ICONS: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+  Technical: Code2,
+  Domain: Building2,
+  "Soft Skill": Volume2,
+  Others: Pin,
+};
+
+const AREA_COLORS: Record<string, string> = {
+  Technical: "#1f3a68",
+  Domain: "#0f766e",
+  "Soft Skill": "#16a34a",
+  Others: "#d97706",
+};
+
 const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
   not_started: { bg: "#f3f4f6", color: "#6b7280", label: "Not Started" },
-  in_progress: { bg: "#dbeafe", color: "#1d4ed8", label: "In Progress" },
-  completed:   { bg: "#dcfce7", color: "#16a34a", label: "Completed" },
+  in_progress: { bg: "#fff7ed", color: "#f26522", label: "In Progress" },
+  completed: { bg: "#dcfce7", color: "#16a34a", label: "Completed" },
+};
+
+const ui: Record<string, React.CSSProperties> = {
+  page: { maxWidth: 1140, display: "grid", gap: 14 },
+  card: {
+    background: "#fff",
+    border: "1px solid var(--color-border)",
+    borderRadius: 16,
+    boxShadow: "var(--shadow-soft)",
+  },
 };
 
 export default function TeamDevelopmentPlansPage() {
-  const [team, setTeam] = useState<any[]>([]);
+  const [team, setTeam] = useState<Member[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -19,98 +61,110 @@ export default function TeamDevelopmentPlansPage() {
   useEffect(() => {
     fetch("/api/manager/development-plans")
       .then((r) => r.json())
-      .then((data) => { if (data.team) setTeam(data.team); })
+      .then((data) => {
+        if (data.team) setTeam(data.team);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "#9ca3af" }}>Loading development plans...</div>;
+  if (loading) {
+    return (
+      <div style={{ ...ui.card, minHeight: 180, display: "grid", placeItems: "center", color: "var(--color-text-muted)" }}>
+        Loading development plans...
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: 1100 }}>
-      <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1f2937", marginBottom: 6 }}>Development Plans (Team)</h2>
-      <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 24 }}>Review your team members' learning and growth plans</p>
+    <div style={ui.page}>
+      <div>
+        <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Development Plans (Team)</h1>
+        <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
+          Review your team members&apos; learning and growth plans
+        </p>
+      </div>
 
       {error && (
-        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 16px", marginBottom: 16, color: "#dc2626", fontSize: 13 }}>
+        <div style={{ ...ui.card, borderColor: "#fecaca", background: "#fff5f5", color: "#b91c1c", padding: "10px 14px", fontSize: 13 }}>
           {error}
         </div>
       )}
 
       {team.length === 0 && (
-        <div style={{ background: "#fff", borderRadius: 16, padding: 48, textAlign: "center", border: "1px solid #ede9fe" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📈</div>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: "#374151" }}>No team members assigned</h3>
+        <div style={{ ...ui.card, padding: 44, textAlign: "center" }}>
+          <TrendingUp size={44} color="var(--color-navy-700)" />
+          <h3 style={{ margin: "10px 0 0", fontSize: 22, color: "var(--color-text-heading)" }}>No team members assigned</h3>
         </div>
       )}
 
       {team.map((member) => {
         const isExpanded = expanded === member.appraisalId;
 
-        // Group entries by area
-        const grouped: Record<string, any[]> = {};
+        const grouped: Record<string, Entry[]> = {};
         for (const e of member.entries) {
           if (!grouped[e.area_name]) grouped[e.area_name] = [];
           grouped[e.area_name].push(e);
         }
 
         return (
-          <div key={member.appraisalId} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${isExpanded ? "#c4b5fd" : "#ede9fe"}`, marginBottom: 12, overflow: "hidden" }}>
-            {/* Header */}
-            <div onClick={() => setExpanded(isExpanded ? null : member.appraisalId)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", cursor: "pointer", background: isExpanded ? "#faf8ff" : "#fff" }}>
+          <section key={member.appraisalId} style={{ ...ui.card, borderColor: isExpanded ? "#ffd7c2" : "var(--color-border)", boxShadow: isExpanded ? "var(--shadow-hover)" : "var(--shadow-soft)", overflow: "hidden" }}>
+            <div onClick={() => setExpanded(isExpanded ? null : member.appraisalId)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", cursor: "pointer", background: isExpanded ? "#fff8f3" : "#fff", borderBottom: isExpanded ? "1px solid var(--color-border)" : "none" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#059669,#0891b2)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#e7eef9", color: "var(--color-navy-700)", display: "grid", placeItems: "center", fontWeight: 700 }}>
                   {member.employeeName?.[0]?.toUpperCase()}
                 </div>
                 <div>
-                  <p style={{ fontWeight: 700, fontSize: 14, color: "#1f2937" }}>{member.employeeName}</p>
-                  <p style={{ fontSize: 12, color: "#9ca3af" }}>{member.total} entries · {member.completed} completed · {member.inProgress} in progress</p>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--color-text-heading)" }}>{member.employeeName}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>
+                    {member.total} entries · {member.completed} completed · {member.inProgress} in progress
+                  </p>
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {member.total === 0 && <span style={{ background: "#fef3c7", color: "#92400e", borderRadius: 20, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>No Plan</span>}
-                {member.total > 0 && member.completed === member.total && <span style={{ background: "#dcfce7", color: "#16a34a", borderRadius: 20, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>All Complete</span>}
-                {member.total > 0 && member.completed < member.total && (
-                  <span style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: 20, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>
-                    {member.completed}/{member.total} done
-                  </span>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {member.total === 0 ? (
+                  <span className="status-pill status-pending">No Plan</span>
+                ) : member.completed === member.total ? (
+                  <span className="status-pill status-approved">All Complete</span>
+                ) : (
+                  <span className="status-pill status-submitted">{member.completed}/{member.total} done</span>
                 )}
-                <span style={{ color: "#9ca3af", fontSize: 18 }}>{isExpanded ? "▴" : "▾"}</span>
+                <span style={{ color: "var(--color-text-muted)", fontSize: 18 }}>{isExpanded ? "▴" : "▾"}</span>
               </div>
             </div>
 
-            {/* Expanded */}
             {isExpanded && (
-              <div style={{ padding: "0 20px 20px" }}>
+              <div style={{ padding: "0 18px 18px" }}>
                 {member.total === 0 ? (
-                  <div style={{ textAlign: "center", padding: 24, color: "#9ca3af", fontSize: 13 }}>
+                  <div style={{ textAlign: "center", padding: 24, color: "var(--color-text-muted)", fontSize: 13 }}>
                     This employee has not created a development plan yet.
                   </div>
                 ) : (
                   Object.keys(grouped).map((areaName) => {
                     const areaEntries = grouped[areaName];
-                    const aColor = AREA_COLORS[areaName] || "#7c3aed";
-                    const aIcon = AREA_ICONS[areaName] || "📌";
+                    const aColor = AREA_COLORS[areaName] || "#1f3a68";
+                    const AreaIcon = AREA_ICONS[areaName] || Pin;
 
                     return (
-                      <div key={areaName} style={{ marginBottom: 16 }}>
+                      <div key={areaName} style={{ marginBottom: 14 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                          <span style={{ fontSize: 18 }}>{aIcon}</span>
-                          <h4 style={{ fontSize: 14, fontWeight: 700, color: aColor }}>{areaName}</h4>
-                          <span style={{ background: aColor + "15", color: aColor, borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>{areaEntries.length}</span>
+                          <AreaIcon size={18} color={aColor} />
+                          <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--color-text-heading)" }}>{areaName}</h4>
+                          <span className="status-pill" style={{ background: `${aColor}15`, color: aColor }}>{areaEntries.length}</span>
                         </div>
 
-                        {areaEntries.map((e: any, i: number) => {
+                        {areaEntries.map((e, i) => {
                           const sb = STATUS_BADGE[e.status] || STATUS_BADGE.not_started;
                           return (
-                            <div key={e.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px 110px", padding: "10px 14px", gap: 12, alignItems: "center", background: i % 2 === 0 ? "#fff" : "#faf8ff", borderRadius: 8, marginBottom: 4, border: "1px solid #f3f0ff" }}>
-                              <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.4 }}>{e.action}</div>
+                            <div key={e.id} style={{ display: "grid", gridTemplateColumns: "1fr 120px 140px 120px", padding: "10px 12px", gap: 12, alignItems: "center", background: i % 2 === 0 ? "#fff" : "#fcfdff", borderRadius: 10, marginBottom: 4, border: "1px solid #f1f5f9" }}>
+                              <div style={{ fontSize: 13, color: "var(--color-text-body)", lineHeight: 1.5 }}>{e.action}</div>
                               <div>
-                                <span style={{ background: "#f5f3ff", color: "#7c3aed", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 600 }}>{e.timeline || "—"}</span>
+                                <span className="status-pill status-draft" style={{ background: "#fff", border: "1px solid var(--color-border)" }}>{e.timeline || "—"}</span>
                               </div>
-                              <div style={{ fontSize: 12, color: "#6b7280" }}>{e.responsible}</div>
+                              <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>{e.responsible}</div>
                               <div>
-                                <span style={{ background: sb.bg, color: sb.color, borderRadius: 20, padding: "3px 12px", fontSize: 11, fontWeight: 700 }}>{sb.label}</span>
+                                <span className="status-pill" style={{ background: sb.bg, color: sb.color }}>{sb.label}</span>
                               </div>
                             </div>
                           );
@@ -121,7 +175,7 @@ export default function TeamDevelopmentPlansPage() {
                 )}
               </div>
             )}
-          </div>
+          </section>
         );
       })}
     </div>

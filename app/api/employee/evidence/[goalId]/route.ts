@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ goal
     const [goalRows] = await pool.query(
       `SELECT eg.id FROM employee_goals eg
        JOIN employee_appraisals ea ON eg.appraisal_id = ea.id
-       WHERE eg.id = ? AND ea.employee_id = ?`,
+       WHERE eg.id = ? AND ea.employee_id = ? AND eg.is_deleted = 0`,
       [goalId, user.id]
     );
     if ((goalRows as any[]).length === 0) {
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ goa
       `SELECT eg.id, ea.self_assessment_submitted_at
        FROM employee_goals eg
        JOIN employee_appraisals ea ON eg.appraisal_id = ea.id
-       WHERE eg.id = ? AND ea.employee_id = ?`,
+       WHERE eg.id = ? AND ea.employee_id = ? AND eg.is_deleted = 0`,
       [goalId, user.id]
     );
     const goal = (goalRows as any[])[0];

@@ -1,6 +1,21 @@
 // app/api/auth/callback/route.ts
 import { keycloak } from "../../lib/keycloak";
 import { getPool } from "../../lib/db";
+import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+
+type ExistingUserRow = RowDataPacket & {
+  id: number;
+  username: string;
+};
+
+type DbRoleRow = RowDataPacket & {
+  role_id: number;
+  role_name: string;
+};
+
+type UsernameRow = RowDataPacket & {
+  username: string;
+};
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -37,6 +52,7 @@ export async function GET(req: Request) {
   let usernameOrEmail: string | null = null;
   let email: string | null = null;
   let keycloakRoles: string[] = [];
+  let cookieUsername: string | null = null;
 
   try {
     const parts = (tokenData.access_token || "").split(".");
@@ -72,36 +88,49 @@ export async function GET(req: Request) {
   }
 
   // ─── Auto-sync user & roles to database ───
-  if (keycloakId && usernameOrEmail) {
+  if (keycloakId) {
     try {
       const pool = getPool();
 
-      // Step 1: Upsert user into users table
-      //   - New user → INSERT
-      //   - Existing user → UPDATE username & email
-      await pool.query(
-        `INSERT INTO users (keycloak_id, username, email, created_at)
-         VALUES (?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE
-           username = VALUES(username),
-           email = VALUES(email)`,
-        [keycloakId, usernameOrEmail, email || usernameOrEmail]
-      );
-
-      // Step 2: Get the user's DB id
-      const [userRows] = await pool.query(
-        "SELECT id FROM users WHERE keycloak_id = ?",
+      // Step 1: Match ONLY by keycloak_id.
+      // Keep DB username as source of truth for existing users.
+      const [existingRows] = await pool.query<ExistingUserRow[]>(
+        "SELECT id, username FROM users WHERE keycloak_id = ? LIMIT 1",
         [keycloakId]
       );
-      const userId = (userRows as any[])[0]?.id;
+      const existingUser = existingRows[0];
+
+      let userId: number | null = null;
+
+      if (existingUser) {
+        userId = existingUser.id;
+        cookieUsername = existingUser.username;
+
+        // Update only email for existing user; do not overwrite username.
+        if (email) {
+          await pool.query("UPDATE users SET email = ? WHERE id = ?", [email, userId]);
+        }
+      } else {
+        const usernameToInsert = usernameOrEmail || email;
+        if (usernameToInsert) {
+          const [insertResult] = await pool.query<ResultSetHeader>(
+            `INSERT INTO users (keycloak_id, username, email, created_at)
+             VALUES (?, ?, ?, NOW())`,
+            [keycloakId, usernameToInsert, email || usernameToInsert]
+          );
+
+          userId = insertResult.insertId;
+          cookieUsername = usernameToInsert;
+        }
+      }
 
       if (userId && keycloakRoles.length > 0) {
         // Step 3: Load all roles from DB to match by name
-        const [dbRoles] = await pool.query(
+        const [dbRoles] = await pool.query<DbRoleRow[]>(
           "SELECT role_id, role_name FROM roles"
         );
         const roleMap = new Map(
-          (dbRoles as any[]).map((r) => [r.role_name.toLowerCase(), r.role_id])
+          dbRoles.map((r) => [r.role_name.toLowerCase(), r.role_id])
         );
 
         // Step 4: Match Keycloak role names → DB role IDs
@@ -123,10 +152,15 @@ export async function GET(req: Request) {
             [values]
           );
 
-          console.log(`Synced ${matchedRoleIds.length} roles for user ${usernameOrEmail} (DB id: ${userId})`);
+          console.log(`Synced ${matchedRoleIds.length} roles for user ${cookieUsername || usernameOrEmail || keycloakId} (DB id: ${userId})`);
         } else {
           console.warn("No matching roles found in DB for:", keycloakRoles);
         }
+      }
+
+      if (!cookieUsername && userId) {
+        const [rows] = await pool.query<UsernameRow[]>("SELECT username FROM users WHERE id = ?", [userId]);
+        cookieUsername = rows[0]?.username || null;
       }
     } catch (dbErr) {
       // Don't block login if DB sync fails — just log it
@@ -143,10 +177,10 @@ export async function GET(req: Request) {
     `access_token=${tokenData.access_token}; HttpOnly; Path=/; SameSite=Lax`
   );
 
-  if (usernameOrEmail) {
+  if (cookieUsername) {
     headers.append(
       "Set-Cookie",
-      `user=${encodeURIComponent(usernameOrEmail)}; Path=/; SameSite=Lax`
+      `user=${encodeURIComponent(cookieUsername)}; Path=/; SameSite=Lax`
     );
   }
 

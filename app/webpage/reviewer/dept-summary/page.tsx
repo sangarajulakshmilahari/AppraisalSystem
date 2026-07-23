@@ -1,4 +1,4 @@
-import PlaceholderPage from "../../_components/PlaceholderPage";
+import PlaceholderPage from "../../components/placeholder";
 export default function Page() {
-  return <PlaceholderPage title="Department Performance Summary" description="Department-wide performance overview" icon="📊" role="HR Reviewer" />;
+  return <PlaceholderPage title="Department Performance Summary" description="Department-wide performance overview" icon="barChart" role="HR Reviewer" />;
 }

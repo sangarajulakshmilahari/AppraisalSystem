@@ -1,4 +1,4 @@
-import PlaceholderPage from "../../_components/PlaceholderPage";
+import PlaceholderPage from "../../components/placeholder";
 export default function Page() {
-  return <PlaceholderPage title="Compensation Approval" description="Approve compensation changes" icon="💰" role="HR Reviewer" />;
+  return <PlaceholderPage title="Compensation Approval" description="Approve compensation changes" icon="wallet" role="HR Reviewer" />;
 }

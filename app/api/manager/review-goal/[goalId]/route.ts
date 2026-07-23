@@ -16,7 +16,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ goal
       `SELECT eg.id, ea.manager_id
        FROM employee_goals eg
        JOIN employee_appraisals ea ON eg.appraisal_id = ea.id
-       WHERE eg.id = ? AND ea.manager_id = ?`,
+       WHERE eg.id = ? AND ea.manager_id = ? AND eg.is_deleted = 0`,
       [goalId, user.id]
     );
     if ((rows as any[]).length === 0) {

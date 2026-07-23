@@ -18,12 +18,18 @@ export async function GET() {
         `SELECT eg.*, ga.area_name
          FROM employee_goals eg
          LEFT JOIN goal_areas ga ON eg.area_id = ga.id
-         WHERE eg.appraisal_id = ?
+         WHERE eg.appraisal_id = ? AND eg.is_deleted = 0
          ORDER BY eg.goal_no`,
         [appraisal.id]
       );
 
-      const totalWeight = (goals as any[]).reduce((s: number, g: any) => s + (g.weight || 0), 0);
+      const totalWeight = (goals as any[]).reduce((s: number, g: any) => {
+        // Exclude rejected goals from total weight calculation
+        if (g.status === 'rejected') {
+          return s;
+        }
+        return s + (g.weight || 0);
+      }, 0);
 
       team.push({
         appraisalId: appraisal.id,
@@ -35,7 +41,7 @@ export async function GET() {
         goalsApprovedAt: appraisal.goals_approved_at,
         goals: goals,
         totalWeight,
-        goalCount: (goals as any[]).length,
+        goalCount: (goals as any[]).filter((g: any) => g.status !== 'rejected').length,
       });
     }
 

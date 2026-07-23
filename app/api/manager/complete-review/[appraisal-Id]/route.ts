@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ app
 
     // Check all goals have performance_rating
     const [goals] = await pool.query(
-      "SELECT id, performance_rating FROM employee_goals WHERE appraisal_id = ?",
+      "SELECT id, performance_rating FROM employee_goals WHERE appraisal_id = ? AND is_deleted = 0",
       [appraisalId]
     );
     const unrated = (goals as any[]).filter((g) => g.performance_rating === null);
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ app
 
     // Calculate weighted average rating
     const [weightedGoals] = await pool.query(
-      "SELECT weight, performance_rating FROM employee_goals WHERE appraisal_id = ?",
+      "SELECT weight, performance_rating FROM employee_goals WHERE appraisal_id = ? AND is_deleted = 0",
       [appraisalId]
     );
     let totalWeightedScore = 0;

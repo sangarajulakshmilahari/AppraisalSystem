@@ -1,6 +1,8 @@
 // app/webpage/competency/page.tsx
 "use client";
-import { useState, useEffect } from "react";
+
+import { useEffect, useState } from "react";
+import { CheckCircle2, Star, X } from "lucide-react";
 
 type Comp = {
   id: number;
@@ -13,7 +15,17 @@ type Comp = {
 };
 
 const RATING_LABELS = ["", "Below Expectations", "Needs Improvement", "Meets Expectations", "Exceeds Expectations", "Outstanding"];
-const RATING_COLORS = ["", "#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#7c3aed"];
+const RATING_COLORS = ["", "#dc2626", "#d97706", "#1f3a68", "#16a34a", "#f26522"];
+
+const ui: Record<string, React.CSSProperties> = {
+  page: { maxWidth: 1040, display: "grid", gap: 16 },
+  card: {
+    background: "#fff",
+    border: "1px solid var(--color-border)",
+    borderRadius: 16,
+    boxShadow: "var(--shadow-soft)",
+  },
+};
 
 export default function CompetencyPage() {
   const [comps, setComps] = useState<Comp[]>([]);
@@ -43,13 +55,12 @@ export default function CompetencyPage() {
 
   const rated = comps.filter((c) => c.self_rating !== null).length;
 
-  // Save rating immediately on click
   const setRating = async (comp: Comp, rating: number) => {
     if (submitted || !editable) return;
     setError("");
 
-    // Optimistic update
-    setComps(comps.map((c) => (c.id === comp.id ? { ...c, self_rating: rating } : c)));
+    const prev = comp.self_rating;
+    setComps((current) => current.map((c) => (c.id === comp.id ? { ...c, self_rating: rating } : c)));
 
     try {
       const res = await fetch(`/api/employee/competencies/${comp.id}`, {
@@ -60,106 +71,112 @@ export default function CompetencyPage() {
       if (!res.ok) {
         const data = await res.json();
         setError(data.error);
-        // Revert on failure
-        setComps(comps.map((c) => (c.id === comp.id ? { ...c, self_rating: comp.self_rating } : c)));
+        setComps((current) => current.map((c) => (c.id === comp.id ? { ...c, self_rating: prev } : c)));
       }
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save competency rating");
+      setComps((current) => current.map((c) => (c.id === comp.id ? { ...c, self_rating: prev } : c)));
     }
   };
 
-  // Submit all
   const handleSubmit = async () => {
     setError("");
     try {
       const res = await fetch("/api/employee/competencies/submit", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) { setError(data.error); return; }
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
       setSubmitted(true);
       setEditable(false);
       setShowConfirm(false);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to submit competencies");
+    }
   };
 
   if (loading) {
-    return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "#9ca3af" }}>Loading competencies...</div>;
+    return (
+      <div style={{ ...ui.card, minHeight: 180, display: "grid", placeItems: "center", color: "var(--color-text-muted)" }}>
+        Loading competencies...
+      </div>
+    );
   }
 
   return (
-    <div style={{ maxWidth: 1000 }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+    <div style={ui.page}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1f2937" }}>Competency Assessment</h2>
-          <p style={{ color: "#9ca3af", fontSize: 13, marginTop: 2 }}>
-            Rate yourself on a scale of 1 (lowest) to 5 (highest)
-            {competencyEnd && ` · Window open until ${competencyEnd}`}
+          <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Competency Assessment</h1>
+          <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
+            Rate yourself on a scale of 1 to 5 {competencyEnd && `· Window open until ${competencyEnd}`}
           </p>
+          {cycleName ? <p style={{ margin: "4px 0 0", color: "var(--color-text-muted)", fontSize: 13 }}>{cycleName}</p> : null}
         </div>
+
         {!submitted && editable ? (
-          <button
-            onClick={() => setShowConfirm(true)}
-            disabled={rated < comps.length}
-            style={{
-              background: rated === comps.length ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "#e5e7eb",
-              color: rated === comps.length ? "#fff" : "#9ca3af",
-              border: "none", borderRadius: 10, padding: "10px 24px",
-              fontWeight: 700, fontSize: 14,
-              cursor: rated === comps.length ? "pointer" : "not-allowed",
-            }}
-          >
+          <button className="btn btn-primary" onClick={() => setShowConfirm(true)} disabled={rated < comps.length}>
             Submit Assessment
           </button>
         ) : submitted ? (
-          <div style={{ background: "#dcfce7", color: "#16a34a", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 14 }}>✓ Submitted</div>
+          <div className="status-pill status-approved" style={{ padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <CheckCircle2 size={16} /> Submitted
+          </div>
         ) : (
-          <div style={{ background: "#f3f4f6", color: "#6b7280", borderRadius: 10, padding: "10px 20px", fontWeight: 600, fontSize: 13 }}>Window not open</div>
+          <div className="status-pill status-draft" style={{ padding: "8px 14px", border: "1px solid var(--color-border)" }}>
+            Window not open
+          </div>
         )}
       </div>
 
-      {/* Error */}
       {error && (
-        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 16px", marginBottom: 16, color: "#dc2626", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ ...ui.card, borderColor: "#fecaca", background: "#fff5f5", color: "#b91c1c", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{error}</span>
-          <button onClick={() => setError("")} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 16 }}>✕</button>
+          <button onClick={() => setError("")} style={{ border: 0, background: "transparent", color: "#b91c1c", cursor: "pointer" }}>
+            <X size={16} />
+          </button>
         </div>
       )}
 
-      {/* Progress Bar */}
-      <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", marginBottom: 20, border: "1px solid #ede9fe", display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{ flex: 1, height: 8, background: "#f3f0ff", borderRadius: 4, overflow: "hidden" }}>
-          <div style={{ width: `${(rated / Math.max(comps.length, 1)) * 100}%`, height: "100%", background: "linear-gradient(90deg,#7c3aed,#4f46e5)", borderRadius: 4, transition: "width 0.4s" }} />
+      <div style={{ ...ui.card, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ flex: 1, height: 8, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" }}>
+          <div style={{ width: `${(rated / Math.max(comps.length, 1)) * 100}%`, height: "100%", background: "linear-gradient(90deg,#f26522,#1f3a68)", transition: "width var(--duration-medium) var(--ease-enterprise)" }} />
         </div>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed", whiteSpace: "nowrap" }}>{rated} / {comps.length} rated</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text-heading)", whiteSpace: "nowrap" }}>
+          {rated} / {comps.length} rated
+        </span>
       </div>
 
-      {/* No competencies */}
       {comps.length === 0 && (
-        <div style={{ background: "#fff", borderRadius: 16, padding: "48px", textAlign: "center", border: "1px solid #ede9fe" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>⭐</div>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: "#374151", marginBottom: 8 }}>No competencies configured</h3>
-          <p style={{ color: "#9ca3af", fontSize: 13 }}>Contact HR to set up competency areas.</p>
+        <div style={{ ...ui.card, padding: "44px 20px", textAlign: "center" }}>
+          <Star size={42} color="var(--color-navy-700)" />
+          <h3 style={{ fontSize: 22, color: "var(--color-text-heading)", margin: "10px 0 0" }}>No competencies configured</h3>
+          <p style={{ color: "var(--color-text-muted)", fontSize: 14, marginTop: 6 }}>Contact HR to set up competency areas.</p>
         </div>
       )}
 
-      {/* Competency Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         {comps.map((c) => {
           const r = c.self_rating;
-          const rColor = r ? RATING_COLORS[r] : "#e5e7eb";
+          const rColor = r ? RATING_COLORS[r] : "#e2e8f0";
           return (
-            <div key={c.id} style={{ background: "#fff", borderRadius: 14, padding: "20px", border: `1px solid ${r ? rColor + "40" : "#ede9fe"}`, boxShadow: `0 4px 14px ${r ? rColor + "18" : "rgba(124,58,237,0.06)"}`, transition: "all 0.2s" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: "#1f2937" }}>{c.area_name}</h3>
-                {r && (
-                  <span style={{ background: rColor + "18", color: rColor, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>{RATING_LABELS[r]}</span>
-                )}
+            <div key={c.id} style={{ ...ui.card, padding: 20, borderColor: r ? `${rColor}55` : "var(--color-border)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 10 }}>
+                <h3 style={{ margin: 0, fontSize: 16, color: "var(--color-text-heading)" }}>{c.area_name}</h3>
+                {r ? (
+                  <span className="status-pill" style={{ background: `${rColor}1f`, color: rColor }}>
+                    {RATING_LABELS[r]}
+                  </span>
+                ) : null}
               </div>
-              <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.6, marginBottom: 16 }}>{c.expected_behaviour}</p>
 
-              {/* Rating Selector */}
+              <p style={{ fontSize: 13, color: "var(--color-text-muted)", lineHeight: 1.6, marginBottom: 14 }}>{c.expected_behaviour}</p>
+
               <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Self Rating</p>
+                <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "var(--color-text-heading)", textTransform: "uppercase", letterSpacing: ".05em" }}>
+                  Self Rating
+                </p>
                 <div style={{ display: "flex", gap: 8 }}>
                   {[1, 2, 3, 4, 5].map((n) => (
                     <button
@@ -168,40 +185,51 @@ export default function CompetencyPage() {
                       title={RATING_LABELS[n]}
                       disabled={submitted || !editable}
                       style={{
-                        width: 40, height: 40, borderRadius: 10,
-                        border: `2px solid ${r === n ? RATING_COLORS[n] : "#e5e7eb"}`,
-                        background: r === n ? RATING_COLORS[n] : "#faf8ff",
-                        color: r === n ? "#fff" : "#9ca3af",
-                        fontWeight: 800, fontSize: 16,
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        border: `1px solid ${r === n ? RATING_COLORS[n] : "var(--color-border)"}`,
+                        background: r === n ? RATING_COLORS[n] : "#fff",
+                        color: r === n ? "#fff" : "var(--color-text-muted)",
+                        fontWeight: 800,
+                        fontSize: 15,
                         cursor: submitted || !editable ? "default" : "pointer",
-                        transition: "all 0.15s",
                       }}
                     >
                       {n}
                     </button>
                   ))}
                 </div>
-                {r && <p style={{ fontSize: 11, color: rColor, fontWeight: 600, marginTop: 6 }}>{RATING_LABELS[r]}</p>}
+                {r ? <p style={{ margin: "6px 0 0", fontSize: 12, color: rColor, fontWeight: 600 }}>{RATING_LABELS[r]}</p> : null}
               </div>
 
-              {/* Manager columns - read only */}
-              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #f3f0ff", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #f1f5f9", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
-                  <p style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", marginBottom: 4 }}>Manager Feedback</p>
-                  <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: c.manager_feedback ? "#374151" : "#d1d5db", fontStyle: c.manager_feedback ? "normal" : "italic" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Manager Feedback</p>
+                  <div style={{ minHeight: 38, background: "#f8fafc", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: c.manager_feedback ? "var(--color-text-body)" : "#94a3b8", fontStyle: c.manager_feedback ? "normal" : "italic" }}>
                     {c.manager_feedback || "Pending review"}
                   </div>
                 </div>
                 <div>
-                  <p style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", marginBottom: 4 }}>Manager Rating</p>
+                  <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Manager Rating</p>
                   <div style={{ display: "flex", gap: 4 }}>
                     {[1, 2, 3, 4, 5].map((n) => (
-                      <div key={n} style={{
-                        width: 26, height: 26, borderRadius: 6,
-                        background: c.manager_rating && n <= c.manager_rating ? RATING_COLORS[c.manager_rating] : "#f3f4f6",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 12, color: c.manager_rating && n <= c.manager_rating ? "#fff" : "#d1d5db", fontWeight: 700,
-                      }}>{n}</div>
+                      <div
+                        key={n}
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 6,
+                          background: c.manager_rating && n <= c.manager_rating ? RATING_COLORS[c.manager_rating] : "#f1f5f9",
+                          display: "grid",
+                          placeItems: "center",
+                          color: c.manager_rating && n <= c.manager_rating ? "#fff" : "#cbd5e1",
+                          fontWeight: 700,
+                          fontSize: 12,
+                        }}
+                      >
+                        {n}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -211,19 +239,24 @@ export default function CompetencyPage() {
         })}
       </div>
 
-      {/* Confirm Modal */}
       {showConfirm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 32, width: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-            <div style={{ fontSize: 36, marginBottom: 16 }}>⭐</div>
-            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Submit Competency Assessment?</h3>
-            <p style={{ color: "#6b7280", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,31,61,.38)", display: "grid", placeItems: "center", zIndex: 100, padding: 16 }}>
+          <div style={{ ...ui.card, width: "100%", maxWidth: 420, padding: 28 }}>
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: "#fff8f3", border: "1px solid #ffd7c2", display: "grid", placeItems: "center", marginBottom: 16 }}>
+              <Star size={24} color="var(--color-orange-500)" />
+            </div>
+            <h3 style={{ margin: 0, fontSize: 24, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Submit Competency Assessment</h3>
+            <p style={{ color: "var(--color-text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
               Your ratings will be locked. The manager will review and provide feedback.
             </p>
-            {error && <p style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>{error}</p>}
-            <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={handleSubmit} style={{ flex: 1, background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: 12, fontWeight: 700, cursor: "pointer" }}>Confirm</button>
-              <button onClick={() => setShowConfirm(false)} style={{ flex: 1, background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 10, padding: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            {error && <p style={{ color: "#b91c1c", fontSize: 13, marginBottom: 12 }}>{error}</p>}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleSubmit}>
+                Confirm
+              </button>
             </div>
           </div>
         </div>

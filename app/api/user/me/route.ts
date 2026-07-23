@@ -2,37 +2,42 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getPool } from "../../lib/db";
+import type { RowDataPacket } from "mysql2/promise";
+
+type MeUserRow = RowDataPacket & {
+  id: number;
+  keycloak_id: string;
+  username: string;
+  email: string;
+};
+
+type MeRoleRow = RowDataPacket & {
+  role_id: number;
+  role_name: string;
+  description: string | null;
+};
 
 export async function GET() {
   try {
     const cookieStore = await cookies();
     const keycloakId = cookieStore.get("keycloak_id")?.value;
-    const sessionUser = cookieStore.get("user")?.value
-      ? decodeURIComponent(cookieStore.get("user")!.value)
-      : null;
+
+    if (!keycloakId) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
 
     const pool = getPool();
-    let userRow: any = null;
+    let userRow: MeUserRow | null = null;
 
-    // 1. Try lookup by keycloak_id (most reliable)
-    if (keycloakId) {
-      const [rows] = await pool.query(
-        "SELECT id, keycloak_id, username, email FROM users WHERE keycloak_id = ?",
-        [keycloakId]
-      );
-      const users = rows as any[];
-      if (users.length > 0) userRow = users[0];
-    }
-
-    // 2. Fallback: lookup by username or email from the user cookie
-    if (!userRow && sessionUser) {
-      const [rows] = await pool.query(
-        "SELECT id, keycloak_id, username, email FROM users WHERE username = ? OR email = ?",
-        [sessionUser, sessionUser]
-      );
-      const users = rows as any[];
-      if (users.length > 0) userRow = users[0];
-    }
+    // 1. Lookup only by keycloak_id
+    const [rows] = await pool.query<MeUserRow[]>(
+      "SELECT id, keycloak_id, username, email FROM users WHERE keycloak_id = ?",
+      [keycloakId]
+    );
+    if (rows.length > 0) userRow = rows[0];
 
     if (!userRow) {
       return NextResponse.json(
@@ -41,8 +46,8 @@ export async function GET() {
       );
     }
 
-    // 3. Fetch all roles assigned to this user
-    const [roleRows] = await pool.query(
+    // 2. Fetch all roles assigned to this user
+    const [roleRows] = await pool.query<MeRoleRow[]>(
       `SELECT r.role_id, r.role_name, r.description 
        FROM user_roles ur 
        JOIN roles r ON ur.role_id = r.role_id 
@@ -58,11 +63,12 @@ export async function GET() {
       email: userRow.email,
       roles: roleRows,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("GET /api/user/me error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch user", details: error.message },
+      { error: "Failed to fetch user", details: message },
       { status: 500 }
     );
   }
-}   
+}

@@ -26,7 +26,7 @@ export async function GET() {
 
     // ── Goal stats ──
     const [goals] = await pool.query(
-      "SELECT id, status, weight FROM employee_goals WHERE appraisal_id = ?",
+      "SELECT id, status, weight FROM employee_goals WHERE appraisal_id = ? AND is_deleted = 0",
       [appraisal.id]
     );
     const goalCount = (goals as any[]).length;
@@ -48,7 +48,7 @@ export async function GET() {
 
     // ── Self Assessment stats ──
     const [saGoals] = await pool.query(
-      "SELECT self_assessment FROM employee_goals WHERE appraisal_id = ?",
+      "SELECT self_assessment FROM employee_goals WHERE appraisal_id = ? AND is_deleted = 0",
       [appraisal.id]
     );
     const saFilled = (saGoals as any[]).filter((g) => g.self_assessment && g.self_assessment.trim()).length;

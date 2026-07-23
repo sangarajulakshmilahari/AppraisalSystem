@@ -38,7 +38,7 @@ export async function GET() {
     for (const a of teamAppraisals) {
       // Count goals
       const [goals] = await pool.query(
-        "SELECT COUNT(*) as cnt FROM employee_goals WHERE appraisal_id = ?",
+        "SELECT COUNT(*) as cnt FROM employee_goals WHERE appraisal_id = ? AND is_deleted = 0",
         [a.id]
       );
       const goalCount = (goals as any[])[0].cnt;

@@ -20,7 +20,7 @@ export async function GET() {
                 ga.area_name
          FROM employee_goals eg
          LEFT JOIN goal_areas ga ON eg.area_id = ga.id
-         WHERE eg.appraisal_id = ?
+         WHERE eg.appraisal_id = ? AND eg.is_deleted = 0
          ORDER BY eg.goal_no`,
         [appraisal.id]
       );
