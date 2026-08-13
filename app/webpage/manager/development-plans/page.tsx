@@ -52,7 +52,7 @@ const ui: Record<string, React.CSSProperties> = {
   },
 };
 
-export default function TeamDevelopmentPlansPage() {
+export default function TeamDevelopmentPlansPage({ inlineWithSectionHeading = false }: { inlineWithSectionHeading?: boolean }) {
   const [team, setTeam] = useState<Member[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,12 +78,14 @@ export default function TeamDevelopmentPlansPage() {
 
   return (
     <div style={ui.page}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Development Plans (Team)</h1>
-        <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
-          Review your team members&apos; learning and growth plans
-        </p>
-      </div>
+      {!inlineWithSectionHeading && (
+        <div>
+          <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Development Plans (Team)</h1>
+          <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
+            Review your team members&apos; learning and growth plans
+          </p>
+        </div>
+      )}
 
       {error && (
         <div style={{ ...ui.card, borderColor: "#fecaca", background: "#fff5f5", color: "#b91c1c", padding: "10px 14px", fontSize: 13 }}>

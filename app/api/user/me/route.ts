@@ -4,11 +4,12 @@ import { cookies } from "next/headers";
 import { getPool } from "../../lib/db";
 import type { RowDataPacket } from "mysql2/promise";
 
-type MeUserRow = RowDataPacket & {
+type AaramEmployeeRow = RowDataPacket & {
   id: number;
   keycloak_id: string;
-  username: string;
+  name: string;
   email: string;
+  role: string | null;
 };
 
 type MeRoleRow = RowDataPacket & {
@@ -16,6 +17,41 @@ type MeRoleRow = RowDataPacket & {
   role_name: string;
   description: string | null;
 };
+
+type MeRoleDto = {
+  role_id: number;
+  role_name: string;
+  description: string | null;
+  display_name?: string;
+};
+
+function mapAaramRoleToAppRoles(aaramRole: string | null): MeRoleDto[] {
+  const normalized = (aaramRole || "").trim().toLowerCase();
+
+  // Business mapping:
+  // - AARAM 'Manager' (Team Lead) => app 'Manager'
+  // - AARAM 'R_Manager'           => app 'Manager'
+  if (
+    normalized === "manager" ||
+    normalized === "r_manager" ||
+    normalized === "team lead" ||
+    normalized === "team_lead" ||
+    normalized === "teamlead"
+  ) {
+    return [{
+      role_id: 2,
+      role_name: "Manager",
+      description: "Reporting manager",
+      display_name: normalized === "r_manager" ? "Manager" : "Team Lead",
+    }];
+  }
+
+  if (normalized === "hr" || normalized === "hr_admin") {
+    return [{ role_id: 3, role_name: "HR Admin", description: "HR administrator" }];
+  }
+
+  return [{ role_id: 1, role_name: "Employee", description: "Regular employee" }];
+}
 
 export async function GET() {
   try {
@@ -30,37 +66,31 @@ export async function GET() {
     }
 
     const pool = getPool();
-    let userRow: MeUserRow | null = null;
 
-    // 1. Lookup only by keycloak_id
-    const [rows] = await pool.query<MeUserRow[]>(
-      "SELECT id, keycloak_id, username, email FROM users WHERE keycloak_id = ?",
+    // Resolve logged-in user from AARAM only
+    const [rows] = await pool.query<AaramEmployeeRow[]>(
+      `SELECT id, keycloak_id, name, email, role
+       FROM aaram_db.employee
+       WHERE keycloak_id = ?
+       LIMIT 1`,
       [keycloakId]
     );
-    if (rows.length > 0) userRow = rows[0];
 
-    if (!userRow) {
+    const employee = rows[0];
+    if (!employee) {
       return NextResponse.json(
-        { error: "User not found in database" },
+        { error: "User not found in aaram_db.employee" },
         { status: 404 }
       );
     }
 
-    // 2. Fetch all roles assigned to this user
-    const [roleRows] = await pool.query<MeRoleRow[]>(
-      `SELECT r.role_id, r.role_name, r.description 
-       FROM user_roles ur 
-       JOIN roles r ON ur.role_id = r.role_id 
-       WHERE ur.user_id = ? 
-       ORDER BY r.role_id`,
-      [userRow.id]
-    );
+    const roleRows = mapAaramRoleToAppRoles(employee.role);
 
     return NextResponse.json({
-      id: userRow.id,
-      keycloakId: userRow.keycloak_id,
-      username: userRow.username,
-      email: userRow.email,
+      id: employee.id,
+      keycloakId: employee.keycloak_id,
+      username: employee.name,
+      email: employee.email,
       roles: roleRows,
     });
   } catch (error: unknown) {

@@ -131,6 +131,9 @@ export default function GoalsPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [rejectingGoalId, setRejectingGoalId] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [designations, setDesignations] = useState<{ id: number; designation_name: string }[]>([]);
+  const [selectedDesignationId, setSelectedDesignationId] = useState<number | null>(null);
+  const [loadingDesignations, setLoadingDesignations] = useState(false);
 
   useEffect(() => {
     fetch("/api/employee/goals")
@@ -146,13 +149,29 @@ export default function GoalsPage() {
           setGoalsSubmitted(!!data.appraisal.goalsSubmittedAt);
           setGoalsApproved(!!data.appraisal.goalsApprovedAt);
         }
-        if (data.designation) setDesignation(data.designation);
+        if (data.designation) {
+          setDesignation(data.designation);
+          setSelectedDesignationId(data.designation.id);
+        }
         if (data.projectRole) setProjectRole(data.projectRole);
         if (data.aaramEmployee) setAaramEmployee(data.aaramEmployee);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!designation) {
+      setLoadingDesignations(true);
+      fetch("/api/employee/kpi-designations")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.designations) setDesignations(data.designations);
+        })
+        .catch((e) => console.error("Failed to load designations:", e))
+        .finally(() => setLoadingDesignations(false));
+    }
+  }, [designation]);
 
   const totalWeight = useMemo(() =>
     goals.reduce((s, g) => {
@@ -272,6 +291,32 @@ export default function GoalsPage() {
     }
   };
 
+  const handleDesignationSelect = async (designationId: number) => {
+    if (!designationId) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/employee/goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ designation_id: designationId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setGoals(data.goals);
+      // Refresh designation
+      const designationRes = await fetch("/api/employee/goals");
+      const designationData = await designationRes.json();
+      if (designationData.designation) {
+        setDesignation(designationData.designation);
+        setSelectedDesignationId(designationData.designation.id);
+      }
+    } catch (e: any) {
+      alert("Failed to load goals for selected designation: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     setError("");
     try {
@@ -328,9 +373,62 @@ export default function GoalsPage() {
             {designation && (
               <span>
                 {" "}· Designation: <strong style={{ color: "var(--color-text-heading)" }}>{designation.designation_name}</strong>
+                {goalsEditable && (
+                  <span style={{ marginLeft: 8 }}>
+                    <select
+                      value={selectedDesignationId || ""}
+                      onChange={(e) => {
+                        const id = parseInt(e.target.value);
+                        if (id) handleDesignationSelect(id);
+                      }}
+                      style={{
+                        fontSize: 12,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        border: "1px solid var(--color-border)",
+                        background: "#fff",
+                        color: "var(--color-text-body)",
+                      }}
+                    >
+                      <option value="">Change...</option>
+                      {designations.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.designation_name}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                )}
               </span>
             )}
-            {projectRole && !designation && (
+            {!designation && goalsEditable && designations.length > 0 && (
+              <span>
+                {" "}· Select Designation:{" "}
+                <select
+                  value={selectedDesignationId || ""}
+                  onChange={(e) => {
+                    const id = parseInt(e.target.value);
+                    if (id) handleDesignationSelect(id);
+                  }}
+                  style={{
+                    fontSize: 12,
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    border: "1px solid var(--color-border)",
+                    background: "#fff",
+                    color: "var(--color-text-body)",
+                  }}
+                >
+                  <option value="">Choose...</option>
+                  {designations.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.designation_name}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            )}
+            {projectRole && !designation && !goalsEditable && (
               <span>
                 {" "}· Project Role: <strong style={{ color: "#d97706" }}>{projectRole}</strong>
               </span>

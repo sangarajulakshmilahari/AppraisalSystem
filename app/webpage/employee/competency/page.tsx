@@ -12,6 +12,8 @@ type Comp = {
   self_rating: number | null;
   manager_rating: number | null;
   manager_feedback: string | null;
+  team_lead_assessment: string | null;
+  team_lead_rating: number | null;
 };
 
 const RATING_LABELS = ["", "Below Expectations", "Needs Improvement", "Meets Expectations", "Exceeds Expectations", "Outstanding"];
@@ -31,8 +33,6 @@ export default function CompetencyPage() {
   const [comps, setComps] = useState<Comp[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [editable, setEditable] = useState(false);
-  const [cycleName, setCycleName] = useState("");
-  const [competencyEnd, setCompetencyEnd] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -42,10 +42,6 @@ export default function CompetencyPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.competencies) setComps(data.competencies);
-        if (data.cycle) {
-          setCycleName(data.cycle.name || "");
-          setCompetencyEnd(data.cycle.competencyEnd || "");
-        }
         if (data.competencyEditable !== undefined) setEditable(data.competencyEditable);
         if (data.appraisal?.competencySubmittedAt) setSubmitted(true);
       })
@@ -106,14 +102,7 @@ export default function CompetencyPage() {
 
   return (
     <div style={ui.page}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Competency Assessment</h1>
-          <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
-            Rate yourself on a scale of 1 to 5 {competencyEnd && `· Window open until ${competencyEnd}`}
-          </p>
-          {cycleName ? <p style={{ margin: "4px 0 0", color: "var(--color-text-muted)", fontSize: 13 }}>{cycleName}</p> : null}
-        </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 16, marginTop: -56 }}>
 
         {!submitted && editable ? (
           <button className="btn btn-primary" onClick={() => setShowConfirm(true)} disabled={rated < comps.length}>
@@ -203,34 +192,68 @@ export default function CompetencyPage() {
                 {r ? <p style={{ margin: "6px 0 0", fontSize: 12, color: rColor, fontWeight: 600 }}>{RATING_LABELS[r]}</p> : null}
               </div>
 
-              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #f1f5f9", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #f1f5f9", display: "grid", gap: 12 }}>
                 <div>
-                  <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Manager Feedback</p>
-                  <div style={{ minHeight: 38, background: "#f8fafc", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: c.manager_feedback ? "var(--color-text-body)" : "#94a3b8", fontStyle: c.manager_feedback ? "normal" : "italic" }}>
-                    {c.manager_feedback || "Pending review"}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Teamlead Assessment</p>
+                    <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Teamlead Rating</p>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12 }}>
+                    <div style={{ minHeight: 38, background: "#f8fafc", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: c.team_lead_assessment || c.team_lead_rating ? "var(--color-text-body)" : "#94a3b8", fontStyle: c.team_lead_assessment || c.team_lead_rating ? "normal" : "italic" }}>
+                      {c.team_lead_assessment || (c.team_lead_rating ? "Reviewed (rating submitted)" : "Pending review")}
+                    </div>
+                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <div
+                          key={n}
+                          style={{
+                            width: 26,
+                            height: 26,
+                            borderRadius: 6,
+                            background: c.team_lead_rating && n <= c.team_lead_rating ? RATING_COLORS[c.team_lead_rating] : "#f1f5f9",
+                            display: "grid",
+                            placeItems: "center",
+                            color: c.team_lead_rating && n <= c.team_lead_rating ? "#fff" : "#cbd5e1",
+                            fontWeight: 700,
+                            fontSize: 12,
+                          }}
+                        >
+                          {n}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
+
                 <div>
-                  <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Manager Rating</p>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <div
-                        key={n}
-                        style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 6,
-                          background: c.manager_rating && n <= c.manager_rating ? RATING_COLORS[c.manager_rating] : "#f1f5f9",
-                          display: "grid",
-                          placeItems: "center",
-                          color: c.manager_rating && n <= c.manager_rating ? "#fff" : "#cbd5e1",
-                          fontWeight: 700,
-                          fontSize: 12,
-                        }}
-                      >
-                        {n}
-                      </div>
-                    ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Management Assessment</p>
+                    <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Manager Rating</p>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12 }}>
+                    <div style={{ minHeight: 38, background: "#f8fafc", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: c.manager_feedback || c.manager_rating ? "var(--color-text-body)" : "#94a3b8", fontStyle: c.manager_feedback || c.manager_rating ? "normal" : "italic" }}>
+                      {c.manager_feedback || (c.manager_rating ? "Reviewed (rating submitted)" : "Pending review")}
+                    </div>
+                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <div
+                          key={n}
+                          style={{
+                            width: 26,
+                            height: 26,
+                            borderRadius: 6,
+                            background: c.manager_rating && n <= c.manager_rating ? RATING_COLORS[c.manager_rating] : "#f1f5f9",
+                            display: "grid",
+                            placeItems: "center",
+                            color: c.manager_rating && n <= c.manager_rating ? "#fff" : "#cbd5e1",
+                            fontWeight: 700,
+                            fontSize: 12,
+                          }}
+                        >
+                          {n}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

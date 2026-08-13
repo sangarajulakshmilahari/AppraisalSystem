@@ -52,7 +52,6 @@ export default function TeamGoalsPage() {
   const [showReject, setShowReject] = useState<number | null>(null);
   const [rejectingGoalId, setRejectingGoalId] = useState<number | null>(null);
   const [rejectingGoalReason, setRejectingGoalReason] = useState("");
-  const [approvingGoalId, setApprovingGoalId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch("/api/manager/team-goals")
@@ -132,14 +131,18 @@ export default function TeamGoalsPage() {
       setTeam((prev) =>
         prev.map((t) =>
           t.appraisalId === appraisalId
-            ? {
-                ...t,
-                goals: t.goals.map((g) => (g.id === goalId ? { ...g, status: "approved" } : g)),
-              }
+            ? (() => {
+                const updatedGoals = t.goals.map((g) => (g.id === goalId ? { ...g, status: "approved" as const } : g));
+                const allApproved = updatedGoals.length > 0 && updatedGoals.every((g) => g.status === "approved");
+                return {
+                  ...t,
+                  goalsApprovedAt: allApproved ? new Date().toISOString() : t.goalsApprovedAt,
+                  goals: updatedGoals,
+                };
+              })()
             : t,
         ),
       );
-      setApprovingGoalId(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to approve goal");
     }
@@ -214,11 +217,26 @@ export default function TeamGoalsPage() {
       {team.map((member) => {
         const isExpanded = expanded === member.appraisalId;
         const hasSubmitted = !!member.goalsSubmittedAt;
-        const isApproved = !!member.goalsApprovedAt;
+        const allGoalsApproved = member.goals.length > 0 && member.goals.every((g) => g.status === "approved");
+        const isApproved = !!member.goalsApprovedAt || allGoalsApproved;
 
         return (
           <section key={member.appraisalId} style={{ ...ui.card, borderColor: isExpanded ? "#ffd7c2" : "var(--color-border)", boxShadow: isExpanded ? "var(--shadow-hover)" : "var(--shadow-soft)", overflow: "hidden" }}>
-            <div onClick={() => setExpanded(isExpanded ? null : member.appraisalId)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", cursor: "pointer", background: isExpanded ? "#fff8f3" : "#fff", borderBottom: isExpanded ? "1px solid var(--color-border)" : "none" }}>
+            <div
+              onClick={() => {
+                if (isApproved) return;
+                setExpanded(isExpanded ? null : member.appraisalId);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "16px 18px",
+                cursor: isApproved ? "default" : "pointer",
+                background: isExpanded ? "#fff8f3" : "#fff",
+                borderBottom: isExpanded ? "1px solid var(--color-border)" : "none",
+              }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#e7eef9", color: "var(--color-navy-700)", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 14 }}>
                   {member.employeeName?.[0]?.toUpperCase() || "?"}
@@ -241,7 +259,7 @@ export default function TeamGoalsPage() {
                 ) : (
                   <span className="status-pill status-draft">Not Submitted</span>
                 )}
-                <span style={{ color: "var(--color-text-muted)", fontSize: 18 }}>{isExpanded ? "▴" : "▾"}</span>
+                <span style={{ color: isApproved ? "#cbd5e1" : "var(--color-text-muted)", fontSize: 18 }}>{isExpanded ? "▴" : "▾"}</span>
               </div>
             </div>
 
@@ -295,28 +313,10 @@ export default function TeamGoalsPage() {
                                   </button>
                                 </div>
                               </div>
-                            ) : approvingGoalId === g.id ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 120 }}>
-                                <div style={{ fontSize: 11, color: "#166534" }}>Approve this goal?</div>
-                                <div style={{ display: "flex", gap: 4 }}>
-                                  <button
-                                    onClick={() => approveIndividualGoal(member.appraisalId, g.id)}
-                                    style={{ padding: "2px 6px", fontSize: 11, background: "#16a34a", color: "white", border: "none", borderRadius: 4 }}
-                                  >
-                                    Confirm
-                                  </button>
-                                  <button
-                                    onClick={() => setApprovingGoalId(null)}
-                                    style={{ padding: "2px 6px", fontSize: 11, background: "#6b7280", color: "white", border: "none", borderRadius: 4 }}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
                             ) : (
                               <>
                                 <button
-                                  onClick={() => setApprovingGoalId(g.id)}
+                                  onClick={() => approveIndividualGoal(member.appraisalId, g.id)}
                                   style={{ padding: "2px 6px", fontSize: 11, background: "#16a34a", color: "white", border: "none", borderRadius: 4 }}
                                 >
                                   Approve

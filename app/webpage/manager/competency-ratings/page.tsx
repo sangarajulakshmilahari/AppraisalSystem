@@ -32,7 +32,7 @@ const ui: Record<string, React.CSSProperties> = {
   },
 };
 
-export default function CompetencyRatingsPage() {
+export default function CompetencyRatingsPage({ inlineWithSectionHeading = false }: { inlineWithSectionHeading?: boolean }) {
   const [team, setTeam] = useState<Member[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,12 +103,14 @@ export default function CompetencyRatingsPage() {
 
   return (
     <div style={ui.page}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Competency Ratings (Team)</h1>
-        <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
-          Review and rate team competency self-assessments
-        </p>
-      </div>
+      {!inlineWithSectionHeading && (
+        <div>
+          <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Competency Ratings (Team)</h1>
+          <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
+            Review and rate team competency self-assessments
+          </p>
+        </div>
+      )}
 
       {error && (
         <div style={{ ...ui.card, borderColor: "#fecaca", background: "#fff5f5", color: "#b91c1c", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

@@ -3,11 +3,26 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../lib/db";
 import { getCurrentUser, getActiveAppraisal } from "../../lib/getuser";
 
+const TEAM_LEAD_REVIEW_COLUMNS = [
+  "team_lead_feedback",
+  "teamlead_feedback",
+  "lead_feedback",
+  "reviewer_feedback",
+] as const;
+
 function normalizeLabel(value: any): string {
   return String(value || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+function resolveOptionKey(goal: { kpi?: any; sa_kpi_label?: any; metric?: any }): string {
+  return (
+    [goal.sa_kpi_label, goal.kpi, goal.metric]
+      .map((v) => normalizeLabel(v))
+      .find(Boolean) || ""
+  );
 }
 
 function isWindowOpen(start: any, end: any): boolean {
@@ -37,10 +52,29 @@ export async function GET() {
     const { cycle, appraisal } = active;
     const pool = getPool();
 
+    // Try to include team lead review if the column exists in employee_goals
+    const [teamLeadColumnRows] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'employee_goals'
+         AND COLUMN_NAME IN (${TEAM_LEAD_REVIEW_COLUMNS.map(() => "?").join(", ")})`,
+      [...TEAM_LEAD_REVIEW_COLUMNS]
+    );
+
+    const availableTeamLeadColumns = new Set(
+      (teamLeadColumnRows as any[]).map((r) => String(r.COLUMN_NAME))
+    );
+    const teamLeadReviewColumn = TEAM_LEAD_REVIEW_COLUMNS.find((c) => availableTeamLeadColumns.has(c));
+    const teamLeadReviewSelect = teamLeadReviewColumn
+      ? `, eg.${teamLeadReviewColumn} AS team_lead_review`
+      : ", NULL AS team_lead_review";
+
     // Fetch goals
     const [goals] = await pool.query(
-      `SELECT eg.id, eg.goal_no, eg.area, eg.kpi, eg.description, eg.sa_kpi_label,
+      `SELECT eg.id, eg.goal_no, eg.area, eg.kpi, eg.description, eg.metric, eg.target, eg.sa_kpi_label,
                eg.self_assessment, eg.manager_feedback, eg.performance_rating
+               ${teamLeadReviewSelect}
        FROM employee_goals eg
        WHERE eg.appraisal_id = ? AND eg.is_deleted = 0
        ORDER BY eg.goal_no`,
@@ -83,20 +117,16 @@ export async function GET() {
     }
 
     // Attach evidence and dropdown options to each goal
-    const goalsWithData = (goals as any[]).map((g) => ({
-      ...g,
-      evidence: evidenceMap[g.id] || [],
-      dropdownOptions: (() => {
-        const candidates = [g.sa_kpi_label, g.kpi]
-          .map((v) => normalizeLabel(v))
-          .filter(Boolean);
+    const goalsWithData = (goals as any[]).map((g) => {
+      const optionKey = resolveOptionKey(g);
 
-        for (const c of candidates) {
-          if (dropdownMap[c]?.length) return dropdownMap[c];
-        }
-        return [];
-      })(),
-    }));
+      return {
+        ...g,
+        option_key: optionKey || null,
+        evidence: evidenceMap[g.id] || [],
+        dropdownOptions: optionKey && dropdownMap[optionKey]?.length ? dropdownMap[optionKey] : [],
+      };
+    });
 
     const saStart = cycle.self_assessment_start ? new Date(cycle.self_assessment_start) : null;
     const saEnd = cycle.self_assessment_end ? new Date(cycle.self_assessment_end) : null;

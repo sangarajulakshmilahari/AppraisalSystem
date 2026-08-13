@@ -15,6 +15,8 @@ type UserRow = {
 
 type RoleRow = { role_name: string };
 type ManagerRow = { username: string };
+type AaramEmployeeRow = { id: number };
+type ReportingRow = { manager_name: string; manager_role: string | null };
 type ResumeRow = {
   ResumeId: number;
   OriginalFileName: string;
@@ -69,7 +71,7 @@ export async function GET() {
     // Get active appraisal info
     const active = await getActiveAppraisal(user.id);
     let cycleInfo = null;
-    let managerName = null;
+    let appraisalManagerName: string | null = null;
 
     if (active) {
       const { cycle, appraisal } = active;
@@ -82,8 +84,47 @@ export async function GET() {
 
       if (appraisal.manager_id) {
         const [mgr] = await pool.query("SELECT username FROM users WHERE id = ?", [appraisal.manager_id]);
-        if ((mgr as ManagerRow[]).length > 0) managerName = (mgr as ManagerRow[])[0].username;
+        if ((mgr as ManagerRow[]).length > 0) appraisalManagerName = (mgr as ManagerRow[])[0].username;
       }
+    }
+
+    // Resolve reporting hierarchy from aaram_db.employee_reporting_managers
+    // Business mapping:
+    // - aaram role = 'Manager'   => Team Lead
+    // - aaram role = 'R_Manager' => Manager
+    let teamLeadName: string | null = null;
+    let managerName: string | null = null;
+
+    const [aaramEmpRows] = await pool.query(
+      "SELECT id FROM aaram_db.employee WHERE keycloak_id = ? LIMIT 1",
+      [userInfo.keycloak_id]
+    );
+    const aaramEmployee = (aaramEmpRows as AaramEmployeeRow[])[0];
+
+    if (aaramEmployee?.id) {
+      const [reportingRows] = await pool.query(
+        `SELECT mgr.name AS manager_name, mgr.role AS manager_role
+         FROM aaram_db.employee_reporting_managers erm
+         JOIN aaram_db.employee mgr ON mgr.id = erm.manager_id
+         WHERE erm.employee_id = ?
+         ORDER BY CASE
+           WHEN LOWER(mgr.role) = 'manager' THEN 0
+           WHEN LOWER(mgr.role) = 'r_manager' THEN 1
+           ELSE 2
+         END, mgr.id`,
+        [aaramEmployee.id]
+      );
+
+      for (const row of reportingRows as ReportingRow[]) {
+        const role = (row.manager_role || "").toLowerCase();
+        if (role === "manager" && !teamLeadName) teamLeadName = row.manager_name;
+        if (role === "r_manager" && !managerName) managerName = row.manager_name;
+      }
+    }
+
+    // Safety fallback only when no explicit manager mapping exists.
+    if (!managerName && appraisalManagerName) {
+      managerName = appraisalManagerName;
     }
 
     let resume: ResumeRow | null = null;
@@ -116,6 +157,7 @@ export async function GET() {
         keycloakId: userInfo.keycloak_id,
         createdAt: formatDate(userInfo.created_at),
         roles: (roles as RoleRow[]).map((r) => r.role_name),
+        teamLeadName,
         managerName,
         resume: resume
           ? {

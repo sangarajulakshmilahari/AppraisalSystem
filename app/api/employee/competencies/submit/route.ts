@@ -37,17 +37,51 @@ export async function POST() {
       );
     }
 
+    const [employeeKeycloakRows] = await pool.query(
+      "SELECT keycloak_id FROM users WHERE id = ? LIMIT 1",
+      [user.id]
+    );
+    const employeeKeycloakId = (employeeKeycloakRows as any[])[0]?.keycloak_id as string | undefined;
+
+    let teamLeadUserId: number | null = null;
+    if (employeeKeycloakId) {
+      const [teamLeadRows] = await pool.query(
+        `SELECT u.id AS user_id
+         FROM aaram_db.employee_reporting_managers erm
+         JOIN aaram_db.employee e ON e.id = erm.employee_id
+         JOIN aaram_db.employee m ON m.id = erm.manager_id
+         JOIN users u ON u.keycloak_id = m.keycloak_id
+         WHERE e.keycloak_id = ?
+           AND LOWER(COALESCE(m.role, '')) = 'manager'
+         LIMIT 1`,
+        [employeeKeycloakId]
+      );
+      teamLeadUserId = ((teamLeadRows as any[])[0]?.user_id as number | undefined) ?? null;
+    }
+
+    const nextPhase = teamLeadUserId ? "team_lead_review" : "manager_review";
+
     // Mark submitted, advance phase
     await pool.query(
       `UPDATE employee_appraisals 
        SET competency_submitted_at = NOW(),
-           current_phase = 'manager_review'
+           current_phase = ?
        WHERE id = ?`,
-      [appraisal.id]
+      [nextPhase, appraisal.id]
     );
 
-    // Notify manager
-    if (appraisal.manager_id) {
+    // Notify reviewer (Team Lead first, else Manager)
+    if (teamLeadUserId) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, title, message, type, link_url)
+         VALUES (?, ?, ?, 'action', '/webpage/manager/team-assessments')`,
+        [
+          teamLeadUserId,
+          "Competency Assessment Submitted",
+          `${user.username} has completed competency self-assessment and is ready for your Team Lead review.`,
+        ]
+      );
+    } else if (appraisal.manager_id) {
       await pool.query(
         `INSERT INTO notifications (user_id, title, message, type, link_url)
          VALUES (?, ?, ?, 'action', '/webpage/manager/competency-ratings')`,

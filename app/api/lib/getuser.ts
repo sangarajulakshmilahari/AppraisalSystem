@@ -1,6 +1,7 @@
 // app/api/lib/getUser.ts
 import { cookies } from "next/headers";
 import { getPool } from "./db";
+import { getProjectRole } from "./getProjectRole";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
 type CurrentUserRow = RowDataPacket & {
@@ -67,14 +68,48 @@ export async function getActiveAppraisal(userId: number) {
   );
 
   if (existing.length > 0) {
-    return { cycle, appraisal: existing[0] };
+    const appraisal = existing[0] as any;
+
+    // Backfill manager mapping for existing rows when missing.
+    if (!appraisal.manager_id) {
+      const [userRows] = await pool.query<RowDataPacket[]>(
+        "SELECT keycloak_id FROM users WHERE id = ? LIMIT 1",
+        [userId]
+      );
+      const keycloakId = (userRows as any[])[0]?.keycloak_id as string | undefined;
+
+      if (keycloakId) {
+        const roleInfo = await getProjectRole(keycloakId);
+        const managerUserId = roleInfo.employee?.managerUserId ?? null;
+        if (managerUserId) {
+          await pool.query(
+            "UPDATE employee_appraisals SET manager_id = ? WHERE id = ?",
+            [managerUserId, appraisal.id]
+          );
+          appraisal.manager_id = managerUserId;
+        }
+      }
+    }
+
+    return { cycle, appraisal };
+  }
+
+  let managerId: number | null = null;
+  const [userRows] = await pool.query<RowDataPacket[]>(
+    "SELECT keycloak_id FROM users WHERE id = ? LIMIT 1",
+    [userId]
+  );
+  const keycloakId = (userRows as any[])[0]?.keycloak_id as string | undefined;
+  if (keycloakId) {
+    const roleInfo = await getProjectRole(keycloakId);
+    managerId = roleInfo.employee?.managerUserId ?? null;
   }
 
   // Auto-create appraisal row for this employee + cycle
   const [result] = await pool.query<ResultSetHeader>(
-    `INSERT INTO employee_appraisals (cycle_id, employee_id, current_phase)
-     VALUES (?, ?, 'goal_setting')`,
-    [cycle.id, userId]
+    `INSERT INTO employee_appraisals (cycle_id, employee_id, manager_id, current_phase)
+     VALUES (?, ?, ?, 'goal_setting')`,
+    [cycle.id, userId, managerId]
   );
 
   const [newRow] = await pool.query<AppraisalRow[]>(

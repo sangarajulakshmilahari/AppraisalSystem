@@ -12,13 +12,24 @@ type GoalSA = {
   area: string | null;
   kpi: string | null;
   description: string;
+  metric: string | null;
+  target: string | null;
   sa_kpi_label: string | null;
+  option_key?: string | null;
   self_assessment: string | null;
   manager_feedback: string | null;
+  team_lead_review: string | null;
   performance_rating: number | null;
   evidence: Evidence[];
   dropdownOptions: DropdownOption[];
 };
+
+function normalizeLabel(value: string | null | undefined): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
 
 const MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
 
@@ -43,7 +54,13 @@ const ui: Record<string, React.CSSProperties> = {
   },
 };
 
-export default function SelfAssessmentPage() {
+export default function SelfAssessmentPage({
+  inlineWithSectionHeading = false,
+  showProgress = true,
+}: {
+  inlineWithSectionHeading?: boolean;
+  showProgress?: boolean;
+}) {
   const [goals, setGoals] = useState<GoalSA[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -185,13 +202,15 @@ export default function SelfAssessmentPage() {
 
   return (
     <div style={ui.page}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Self Assessment</h1>
-          <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
-            {cycleName} {saEnd && `· Window open until ${saEnd}`}
-          </p>
-        </div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          gap: 16,
+          marginTop: inlineWithSectionHeading ? -56 : 0,
+        }}
+      >
 
         {!submitted && saEditable && (
           <button className="btn btn-primary" onClick={() => setShowConfirm(true)}>
@@ -215,28 +234,30 @@ export default function SelfAssessmentPage() {
         </div>
       )}
 
-      <div style={{ ...ui.card, padding: "16px 18px", display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-heading)" }}>Assessment Progress</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-orange-500)" }}>
-              {filled} / {goals.length} goals filled
-            </span>
+      {showProgress && (
+        <div style={{ ...ui.card, padding: "16px 18px", display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-heading)" }}>Assessment Progress</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-orange-500)" }}>
+                {filled} / {goals.length} goals filled
+              </span>
+            </div>
+            <div style={{ height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+              <div
+                style={{
+                  width: `${pct}%`,
+                  height: "100%",
+                  borderRadius: 999,
+                  background: "linear-gradient(90deg, #f26522 0%, #1f3a68 100%)",
+                  transition: "width var(--duration-medium) var(--ease-enterprise)",
+                }}
+              />
+            </div>
           </div>
-          <div style={{ height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-            <div
-              style={{
-                width: `${pct}%`,
-                height: "100%",
-                borderRadius: 999,
-                background: "linear-gradient(90deg, #f26522 0%, #1f3a68 100%)",
-                transition: "width var(--duration-medium) var(--ease-enterprise)",
-              }}
-            />
-          </div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--color-text-heading)" }}>{pct}%</div>
         </div>
-        <div style={{ fontSize: 26, fontWeight: 800, color: "var(--color-text-heading)" }}>{pct}%</div>
-      </div>
+      )}
 
       {goals.length === 0 && (
         <div style={{ ...ui.card, padding: "44px 20px", textAlign: "center" }}>
@@ -249,7 +270,9 @@ export default function SelfAssessmentPage() {
       )}
 
       {goals.map((g) => {
-        const hasDropdown = g.dropdownOptions.length > 0;
+        const optionKey = normalizeLabel(g.option_key || g.sa_kpi_label || g.kpi || g.metric);
+        const hasDropdown = !!optionKey && (g.dropdownOptions?.length || 0) > 0;
+        const displayKpi = g.kpi || g.sa_kpi_label || g.metric || g.area || g.description;
         const isOpen = expanded === g.id;
 
         return (
@@ -281,10 +304,20 @@ export default function SelfAssessmentPage() {
               <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--color-text-heading)" }}>
                   {g.area && <span style={{ color: "var(--color-navy-700)" }}>{g.area}</span>}
-                  {g.area && g.kpi && " — "}
-                  {g.kpi || (!g.area && g.description)}
+                  {g.area && displayKpi && displayKpi !== g.area && " — "}
+                  {displayKpi}
                 </p>
-                {g.sa_kpi_label && <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>KPI: {g.sa_kpi_label}</p>}
+                {displayKpi && (
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>
+                    KPI: {displayKpi}
+                  </p>
+                )}
+                {(g.metric || g.target) && (
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>
+                    {g.metric ? `Metric: ${g.metric}` : "Metric: —"}
+                    {g.target ? ` · Target: ${g.target}` : ""}
+                  </p>
+                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -305,11 +338,11 @@ export default function SelfAssessmentPage() {
 
             {isOpen && (
               <div style={{ padding: "16px 20px 20px", display: "grid", gap: 16 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
                   <div>
-                    <label className="field-label">
-                      Self Assessment {hasDropdown && <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(select from options)</span>}
-                    </label>
+                    {/* <label className="field-label">
+                      Self Assessment {hasDropdown ? <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(select from options)</span> : <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(write based on metric/target)</span>}
+                    </label> */}
 
                     {hasDropdown ? (
                       <div>
@@ -338,100 +371,122 @@ export default function SelfAssessmentPage() {
                         )}
                       </div>
                     ) : (
-                      <textarea
-                        disabled={!saEditable}
-                        rows={4}
-                        placeholder="Describe your achievement against this goal..."
-                        value={g.self_assessment || ""}
-                        onChange={(e) => saveSA(g.id, e.target.value)}
-                        className="field-textarea"
-                        style={{ background: saEditable ? "#fff" : "#f8fafc" }}
-                      />
+                      <>
+                        <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--color-text-muted)" }}>
+                          No predefined options found. Please assess against the metric shown.
+                        </p>
+                        <textarea
+                          disabled={!saEditable}
+                          rows={4}
+                          placeholder="Describe your achievement against this goal/metric and include measurable outcomes."
+                          value={g.self_assessment || ""}
+                          onChange={(e) => saveSA(g.id, e.target.value)}
+                          className="field-textarea"
+                          style={{ background: saEditable ? "#fff" : "#f8fafc" }}
+                        />
+                      </>
+                    )}
+                  </div>
+
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <label className="field-label" style={{ marginBottom: 0 }}>
+                        Supporting Evidence / Data <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>({g.evidence.length}/12 rows)</span>
+                      </label>
+                      {!saEditable && (
+                        <span className="status-pill status-draft" style={{ border: "1px solid var(--color-border)" }}>
+                          Locked
+                        </span>
+                      )}
+                    </div>
+
+                    {g.evidence.length === 0 ? (
+                      saEditable ? (
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => addEvidence(g.id)}
+                          style={{ width: "100%", minHeight: 46, justifyContent: "center" }}
+                        >
+                          + Add Row
+                        </button>
+                      ) : (
+                        <div style={{ textAlign: "center", padding: "14px", borderRadius: 10, border: "1px dashed var(--color-border)", color: "var(--color-text-muted)", fontSize: 13, background: "#f8fafc" }}>
+                          No evidence added. Evidence entry is locked after self-assessment submission.
+                        </div>
+                      )
+                    ) : (
+                      g.evidence.map((ev) => (
+                        <div key={ev.id} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "center" }}>
+                          <select
+                            value={ev.month}
+                            onChange={(e) => updateEvidence(g.id, ev.id, "month", e.target.value)}
+                            disabled={!saEditable}
+                            className="field-select"
+                            style={{ width: 92, minHeight: 38 }}
+                          >
+                            {MONTHS.map((m) => (
+                              <option key={m}>{m}</option>
+                            ))}
+                          </select>
+                          <input
+                            value={ev.description}
+                            onChange={(e) => updateEvidence(g.id, ev.id, "description", e.target.value)}
+                            disabled={!saEditable}
+                            placeholder="Evidence description..."
+                            className="field-input"
+                            style={{ minHeight: 38, flex: 1 }}
+                          />
+                          {saEditable && (
+                            <button
+                              onClick={() => removeEvidence(g.id, ev.id)}
+                              style={{
+                                minHeight: 38,
+                                minWidth: 38,
+                                border: "1px solid #fecaca",
+                                borderRadius: 10,
+                                background: "#fff5f5",
+                                color: "#b91c1c",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      ))
                     )}
                   </div>
 
                   <div>
                     <label className="field-label">
-                      Manager Feedback <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(read-only)</span>
+                      Teamlead Assessment <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(read-only)</span>
                     </label>
                     <textarea
                       rows={4}
                       readOnly
-                      placeholder="Manager feedback will appear here after review..."
+                      placeholder="Teamlead assessment will appear here after review..."
+                      value={g.team_lead_review || ""}
+                      className="field-textarea"
+                      style={{ background: "#f8fafc", color: "var(--color-text-muted)", cursor: "default" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="field-label">
+                      Manager Assessment <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(read-only)</span>
+                    </label>
+                    <textarea
+                      rows={4}
+                      readOnly
+                      placeholder="Manager assessment will appear here after review..."
                       value={g.manager_feedback || ""}
                       className="field-textarea"
                       style={{ background: "#f8fafc", color: "var(--color-text-muted)", cursor: "default" }}
                     />
                   </div>
-                </div>
-
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                    <label className="field-label" style={{ marginBottom: 0 }}>
-                      Supporting Evidence / Data <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>({g.evidence.length}/12 rows)</span>
-                    </label>
-                    {saEditable && g.evidence.length < 12 && (
-                      <button className="btn btn-secondary" onClick={() => addEvidence(g.id)} style={{ minHeight: 36 }}>
-                        + Add Row
-                      </button>
-                    )}
-                    {!saEditable && (
-                      <span className="status-pill status-draft" style={{ border: "1px solid var(--color-border)" }}>
-                        Locked
-                      </span>
-                    )}
-                  </div>
-
-                  {g.evidence.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "14px", borderRadius: 10, border: "1px dashed var(--color-border)", color: "var(--color-text-muted)", fontSize: 13, background: "#f8fafc" }}>
-                      {saEditable
-                        ? 'No evidence added yet. Click "+ Add Row" to add supporting data.'
-                        : "No evidence added. Evidence entry is locked after self-assessment submission."}
-                    </div>
-                  ) : (
-                    g.evidence.map((ev) => (
-                      <div key={ev.id} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "center" }}>
-                        <select
-                          value={ev.month}
-                          onChange={(e) => updateEvidence(g.id, ev.id, "month", e.target.value)}
-                          disabled={!saEditable}
-                          className="field-select"
-                          style={{ width: 92, minHeight: 38 }}
-                        >
-                          {MONTHS.map((m) => (
-                            <option key={m}>{m}</option>
-                          ))}
-                        </select>
-                        <input
-                          value={ev.description}
-                          onChange={(e) => updateEvidence(g.id, ev.id, "description", e.target.value)}
-                          disabled={!saEditable}
-                          placeholder="Evidence description..."
-                          className="field-input"
-                          style={{ minHeight: 38, flex: 1 }}
-                        />
-                        {saEditable && (
-                          <button
-                            onClick={() => removeEvidence(g.id, ev.id)}
-                            style={{
-                              minHeight: 38,
-                              minWidth: 38,
-                              border: "1px solid #fecaca",
-                              borderRadius: 10,
-                              background: "#fff5f5",
-                              color: "#b91c1c",
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            <X size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  )}
                 </div>
               </div>
             )}

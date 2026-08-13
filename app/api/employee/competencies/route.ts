@@ -3,6 +3,13 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../lib/db";
 import { getCurrentUser, getActiveAppraisal } from "../../lib/getuser";
 
+const TEAM_LEAD_COMPETENCY_COLUMNS = [
+  "team_lead_feedback",
+  "teamlead_feedback",
+  "lead_feedback",
+  "reviewer_feedback",
+] as const;
+
 function isWindowOpen(start: any, end: any): boolean {
   if (!start || !end) return false;
   const today = new Date();
@@ -29,6 +36,20 @@ export async function GET() {
 
     const { cycle, appraisal } = active;
     const pool = getPool();
+
+    const [teamLeadColumnRows] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'employee_competencies'
+         AND COLUMN_NAME IN (${TEAM_LEAD_COMPETENCY_COLUMNS.map(() => "?").join(", ")})`,
+      [...TEAM_LEAD_COMPETENCY_COLUMNS]
+    );
+    const availableTeamLeadColumns = new Set((teamLeadColumnRows as any[]).map((r) => String(r.COLUMN_NAME)));
+    const teamLeadColumn = TEAM_LEAD_COMPETENCY_COLUMNS.find((c) => availableTeamLeadColumns.has(c));
+    const teamLeadSelect = teamLeadColumn
+      ? `ec.${teamLeadColumn} AS team_lead_assessment`
+      : "NULL AS team_lead_assessment";
 
     // Get all active competency areas
     const [areas] = await pool.query(
@@ -58,11 +79,13 @@ export async function GET() {
     // Re-fetch after potential inserts
     const [allRatings] = await pool.query(
       `SELECT ec.id, ec.competency_id, ec.self_rating, ec.manager_rating, ec.manager_feedback,
-              ca.area_name, ca.expected_behaviour, ca.display_order
-       FROM employee_competencies ec
-       JOIN competency_areas ca ON ec.competency_id = ca.id
-       WHERE ec.appraisal_id = ?
-       ORDER BY ca.display_order`,
+               ec.team_lead_rating,
+               ${teamLeadSelect},
+                 ca.area_name, ca.expected_behaviour, ca.display_order
+        FROM employee_competencies ec
+        JOIN competency_areas ca ON ec.competency_id = ca.id
+        WHERE ec.appraisal_id = ?
+        ORDER BY ca.display_order`,
       [appraisal.id]
     );
 

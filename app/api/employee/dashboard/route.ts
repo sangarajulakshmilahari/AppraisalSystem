@@ -24,15 +24,30 @@ export async function GET() {
     const { cycle, appraisal } = active;
     const pool = getPool();
 
+    const [employeeKeycloakRows] = await pool.query(
+      "SELECT keycloak_id FROM users WHERE id = ? LIMIT 1",
+      [user.id]
+    );
+    const employeeKeycloakId = (employeeKeycloakRows as any[])[0]?.keycloak_id as string | undefined;
+
+    const [hasTeamLeadRows] = await pool.query(
+      `SELECT 1
+       FROM aaram_db.employee_reporting_managers erm
+       JOIN aaram_db.employee e ON e.id = erm.employee_id
+       JOIN aaram_db.employee m ON m.id = erm.manager_id
+       WHERE e.keycloak_id = ?
+         AND LOWER(COALESCE(m.role, '')) = 'manager'
+       LIMIT 1`,
+      [employeeKeycloakId || ""]
+    );
+    const hasTeamLead = !!employeeKeycloakId && (hasTeamLeadRows as any[]).length > 0;
+
     // ── Goal stats ──
     const [goals] = await pool.query(
       "SELECT id, status, weight FROM employee_goals WHERE appraisal_id = ? AND is_deleted = 0",
       [appraisal.id]
     );
     const goalCount = (goals as any[]).length;
-    const goalsApproved = (goals as any[]).filter((g) => g.status === "approved").length;
-    const goalsSubmitted = (goals as any[]).filter((g) => g.status === "submitted").length;
-
     let goalStatusText = "Not started";
     let goalStatusColor = "#6b7280";
     if (appraisal.goals_approved_at) {
@@ -94,12 +109,17 @@ export async function GET() {
       { name: "Goal Setting", key: "goal_setting" },
       { name: "Self Assessment", key: "self_assessment" },
       { name: "Competency", key: "competency_assessment" },
+      ...(hasTeamLead ? [{ name: "Team Lead Review", key: "team_lead_review" }] : []),
       { name: "Manager Review", key: "manager_review" },
       { name: "HR Review", key: "hr_review" },
       { name: "Completed", key: "completed" },
     ];
     const phaseOrder = phases.map((p) => p.key);
-    const currentIdx = phaseOrder.indexOf(appraisal.current_phase);
+    let currentIdx = phaseOrder.indexOf(appraisal.current_phase);
+    if (currentIdx < 0 && appraisal.current_phase === "team_lead_review" && !hasTeamLead) {
+      currentIdx = phaseOrder.indexOf("manager_review");
+    }
+    if (currentIdx < 0) currentIdx = 0;
 
     // ── Overall progress percentage ──
     const totalPhases = phases.length;
@@ -167,6 +187,7 @@ export async function GET() {
         periodStart: formatDate(cycle.period_start),
         periodEnd: formatDate(cycle.period_end),
         currentPhase: appraisal.current_phase,
+        hasTeamLead,
       },
       progress: progressPct,
       phases: phases.map((p, i) => ({

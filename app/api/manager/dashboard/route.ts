@@ -24,6 +24,29 @@ export async function GET() {
     }
 
     const pool = getPool();
+
+    const [reviewerRows] = await pool.query(
+      "SELECT u.keycloak_id, ae.role FROM users u LEFT JOIN aaram_db.employee ae ON ae.keycloak_id = u.keycloak_id WHERE u.id = ? LIMIT 1",
+      [user.id]
+    );
+    const reviewerAaramRole = String((reviewerRows as any[])[0]?.role || "").toLowerCase();
+    const isTeamLeadReviewer = reviewerAaramRole === "manager";
+
+    const teamLeadReviewCompletedCandidates = [
+      "team_lead_review_completed_at",
+      "teamlead_review_completed_at",
+      "lead_review_completed_at",
+    ];
+    const [tlReviewCols] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'employee_appraisals'
+         AND COLUMN_NAME IN (${teamLeadReviewCompletedCandidates.map(() => "?").join(", ")})`,
+      [...teamLeadReviewCompletedCandidates]
+    );
+    const tlReviewColSet = new Set((tlReviewCols as any[]).map((r) => String(r.COLUMN_NAME)));
+    const teamLeadReviewCompletedColumn = teamLeadReviewCompletedCandidates.find((c) => tlReviewColSet.has(c));
     const cycleName = teamAppraisals[0]?.cycle_name || "";
     const periodStart = formatDate(teamAppraisals[0]?.period_start);
     const periodEnd = formatDate(teamAppraisals[0]?.period_end);
@@ -32,7 +55,6 @@ export async function GET() {
     const members = [];
     let goalsAwaitingApproval = 0;
     let assessmentsToReview = 0;
-    let competenciesToReview = 0;
     let reviewsCompleted = 0;
 
     for (const a of teamAppraisals) {
@@ -45,15 +67,19 @@ export async function GET() {
 
       // Check statuses
       if (a.goals_submitted_at && !a.goals_approved_at) goalsAwaitingApproval++;
-      if (a.self_assessment_submitted_at && !a.manager_review_completed_at) assessmentsToReview++;
-      if (a.competency_submitted_at && !a.manager_review_completed_at) competenciesToReview++;
-      if (a.manager_review_completed_at) reviewsCompleted++;
+      const reviewerCompleted = isTeamLeadReviewer
+        ? !!(teamLeadReviewCompletedColumn ? a[teamLeadReviewCompletedColumn] : null)
+        : !!a.manager_review_completed_at;
+
+      if (a.self_assessment_submitted_at && !reviewerCompleted) assessmentsToReview++;
+      if (reviewerCompleted) reviewsCompleted++;
 
       // Phase label
       const PHASE_LABELS: Record<string, string> = {
         goal_setting: "Goal Setting",
         self_assessment: "Self Assessment",
         competency_assessment: "Competency",
+        team_lead_review: "Team Lead Review",
         manager_review: "Manager Review",
         hr_review: "HR Review",
         completed: "Completed",
@@ -64,6 +90,7 @@ export async function GET() {
         goal_setting: "#6b7280",
         self_assessment: "#f59e0b",
         competency_assessment: "#0891b2",
+        team_lead_review: "#6d28d9",
         manager_review: "#7c3aed",
         hr_review: "#1d4ed8",
         completed: "#10b981",
@@ -82,7 +109,7 @@ export async function GET() {
         goalsApproved: !!a.goals_approved_at,
         saSubmitted: !!a.self_assessment_submitted_at,
         competencySubmitted: !!a.competency_submitted_at,
-        reviewCompleted: !!a.manager_review_completed_at,
+        reviewCompleted: reviewerCompleted,
         overallRating: a.overall_rating,
         overallRatingLabel: a.overall_rating_label,
       });

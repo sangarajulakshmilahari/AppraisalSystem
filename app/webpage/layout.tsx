@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart2,
   Bell,
@@ -52,6 +52,10 @@ const ICON_SIZE = 18;
 const MENU_MAP: Record<string, { href: string; icon: React.ReactNode }> = {
   Dashboard: { href: "/webpage/dashboard", icon: <LayoutDashboard size={ICON_SIZE} /> },
   "My Goals": { href: "/webpage/employee/goals", icon: <Target size={ICON_SIZE} /> },
+  Assessment: {
+    href: "/webpage/assessment",
+    icon: <ClipboardCheck size={ICON_SIZE} />,
+  },
   "Self Assessment": {
     href: "/webpage/employee/self-assessment",
     icon: <ClipboardList size={ICON_SIZE} />,
@@ -59,10 +63,6 @@ const MENU_MAP: Record<string, { href: string; icon: React.ReactNode }> = {
   "Competency Assessment": {
     href: "/webpage/employee/competency",
     icon: <Star size={ICON_SIZE} />,
-  },
-  "Development Plan": {
-    href: "/webpage/employee/development-plan",
-    icon: <TrendingUp size={ICON_SIZE} />,
   },
   "Feedback & Results": {
     href: "/webpage/employee/feedback",
@@ -199,7 +199,7 @@ const ROLE_STYLE: Record<string, { bg: string; text: string; border: string }> =
   "Super Admin": { bg: "#f1f5f9", text: "#334155", border: "#d7dde5" },
 };
 
-type Role = { role_id: number; role_name: string; description: string };
+type Role = { role_id: number; role_name: string; description: string; display_name?: string };
 type Menu = { menu_id: number; menu_name: string; menu_order: number };
 type NavNode = {
   key: string;
@@ -211,13 +211,14 @@ type NavNode = {
 const ASSESSMENT_SOURCE_MENUS = new Set([
   "Self Assessment",
   "Competency Assessment",
-  "Team Assessments",
-  "Competency Ratings",
+  "Development Plan",
 ]);
 
 const SIDEBAR_HIDDEN_MENUS = new Set([
   "Notifications",
   "Notifications / Tasks",
+  "Competency Ratings",
+  "Development Plans (Team)",
 ]);
 
 function getInitials(name: string) {
@@ -230,15 +231,12 @@ function getInitials(name: string) {
 
 export default function WebpageLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [roles, setRoles] = useState<Role[]>([]);
   const [activeRole, setActiveRole] = useState<Role | null>(null);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showRoles, setShowRoles] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [currentCycle, setCurrentCycle] = useState("Current Cycle");
 
@@ -249,9 +247,9 @@ export default function WebpageLayout({ children }: { children: React.ReactNode 
         if (d.username) setUsername(d.username);
         if (d.email) setEmail(d.email);
         if (d.roles?.length) {
-          setRoles(d.roles);
+          const manager = d.roles.find((r: Role) => r.role_name === "Manager");
           const emp = d.roles.find((r: Role) => r.role_name === "Employee");
-          setActiveRole(emp || d.roles[0]);
+          setActiveRole(manager || emp || d.roles[0]);
         }
       })
       .catch((e) => console.error("Failed to load user:", e))
@@ -284,16 +282,6 @@ export default function WebpageLayout({ children }: { children: React.ReactNode 
       .catch(() => setCurrentCycle("Current Cycle"));
   }, [activeRole]);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowRoles(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
   const rc = activeRole ? (ROLE_STYLE[activeRole.role_name] ?? ROLE_STYLE.Employee) : ROLE_STYLE.Employee;
 
   const hasEmployeeAssessment =
@@ -302,7 +290,9 @@ export default function WebpageLayout({ children }: { children: React.ReactNode 
 
   const hasManagerAssessment =
     activeRole?.role_name === "Manager" &&
-    (menus.some((m) => m.menu_name === "Team Assessments") || menus.some((m) => m.menu_name === "Competency Ratings"));
+    (menus.some((m) => m.menu_name === "Self Assessment") ||
+      menus.some((m) => m.menu_name === "Competency Assessment") ||
+      menus.some((m) => m.menu_name === "Development Plan"));
 
   let navNodes: NavNode[] = [];
   menus.forEach((m) => {
@@ -317,43 +307,68 @@ export default function WebpageLayout({ children }: { children: React.ReactNode 
     });
   });
 
-  const dashboardIndex = navNodes.findIndex((n) => n.label === "Dashboard");
-  const assessmentNode: NavNode | null = hasEmployeeAssessment || hasManagerAssessment
-    ? {
-        key: "menu-assessment",
-        label: "Assessment",
-        icon: <ClipboardCheck size={ICON_SIZE} />,
-        href: "/webpage/assessment",
-      }
-    : null;
-
-  if (assessmentNode) {
-    if (dashboardIndex >= 0) {
-      navNodes.splice(dashboardIndex + 1, 0, assessmentNode);
-    } else {
-      navNodes.unshift(assessmentNode);
-    }
+  // Ensure managers can access their own goal sheet as an individual contributor.
+  if (activeRole?.role_name === "Manager" && !navNodes.some((n) => n.href === "/webpage/employee/goals")) {
+    navNodes.push({
+      key: "manager-self-goals",
+      label: "My Goals",
+      href: "/webpage/employee/goals",
+      icon: <Target size={ICON_SIZE} />,
+    });
   }
 
-  if (activeRole?.role_name === "Employee") {
-    const pick = (predicate: (n: NavNode) => boolean) => {
-      const index = navNodes.findIndex(predicate);
-      if (index < 0) return null;
-      const [node] = navNodes.splice(index, 1);
-      return node;
-    };
-
-    const dashboardNode = pick((n) => n.label === "Dashboard");
-    const myGoalsNode = pick((n) => n.label === "My Goals");
-    const assessmentSection = pick((n) => n.key === "menu-assessment");
-
-    navNodes = [
-      ...(dashboardNode ? [dashboardNode] : []),
-      ...(myGoalsNode ? [myGoalsNode] : []),
-      ...(assessmentSection ? [assessmentSection] : []),
-      ...navNodes,
-    ];
+  // Ensure Team Assessments tab is always available for managers.
+  if (activeRole?.role_name === "Manager" && !navNodes.some((n) => n.href === "/webpage/manager/team-assessments")) {
+    navNodes.push({
+      key: "manager-team-assessments",
+      label: "Team Assessments",
+      href: "/webpage/manager/team-assessments",
+      icon: <ClipboardCheck size={ICON_SIZE} />,
+    });
   }
+
+  // Add Assessment node if user has any assessment-related menus
+  if ((hasEmployeeAssessment || hasManagerAssessment) && !navNodes.some((n) => n.href === "/webpage/assessment")) {
+    navNodes.push({
+      key: "assessment",
+      label: "Assessment",
+      href: "/webpage/assessment",
+      icon: <ClipboardCheck size={ICON_SIZE} />,
+    });
+  }
+
+  const pick = (predicate: (n: NavNode) => boolean) => {
+    const index = navNodes.findIndex(predicate);
+    if (index < 0) return null;
+    const [node] = navNodes.splice(index, 1);
+    return node;
+  };
+
+  // Global sidebar ordering:
+  // 1) Dashboard
+  // 2) My Goals
+  // 3) Assessment
+  // ...other items...
+  // last-1) My Profile
+  // last) Help / Help Support
+  const dashboardNode = pick((n) => n.label === "Dashboard");
+  const myGoalsNode = pick((n) => n.label === "My Goals");
+  const assessmentNode = pick((n) => n.label === "Assessment");
+  const teamGoalsNode = pick((n) => n.label === "Team Goals Approval");
+  const teamAssessmentsNode = pick((n) => n.label === "Team Assessments");
+  const profileNode = pick((n) => n.label === "My Profile");
+  const helpNode = pick((n) => n.label === "Help" || n.label === "Help / Support");
+
+  navNodes = [
+    ...(dashboardNode ? [dashboardNode] : []),
+    ...(myGoalsNode ? [myGoalsNode] : []),
+    ...(assessmentNode ? [assessmentNode] : []),
+    ...(teamGoalsNode ? [teamGoalsNode] : []),
+    ...(teamAssessmentsNode ? [teamAssessmentsNode] : []),
+    ...navNodes,
+    ...(profileNode ? [profileNode] : []),
+    ...(helpNode ? [helpNode] : []),
+  ];
 
   return (
     <div className="app-shell" style={{ display: "flex", background: "#f3f6fb", height: "100vh", overflow: "hidden" }}>
@@ -475,108 +490,19 @@ export default function WebpageLayout({ children }: { children: React.ReactNode 
           </div>
 
           {!collapsed && activeRole && (
-            <div ref={dropdownRef} style={{ position: "relative" }}>
-              <button
-                onClick={() => setShowRoles(!showRoles)}
-                style={{
-                  width: "100%",
-                  background: rc.bg,
-                  color: rc.text,
-                  border: `1px solid ${rc.border}`,
-                  borderRadius: 10,
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span>{activeRole.role_name}</span>
-                <ChevronDown
-                  size={14}
-                  style={{
-                    transform: showRoles ? "rotate(180deg)" : "none",
-                    transition: "transform var(--duration-fast) var(--ease-enterprise)",
-                  }}
-                />
-              </button>
-
-              {showRoles && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 6px)",
-                    left: 0,
-                    right: 0,
-                    background: "#fff",
-                    borderRadius: 12,
-                    border: "1px solid var(--color-border)",
-                    boxShadow: "var(--shadow-soft)",
-                    zIndex: 60,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      fontSize: 10,
-                      color: "var(--color-text-muted)",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: ".06em",
-                      borderBottom: "1px solid var(--color-border)",
-                    }}
-                  >
-                    Switch Role
-                  </div>
-                  {roles.map((r) => {
-                    const s = ROLE_STYLE[r.role_name] ?? ROLE_STYLE.Employee;
-                    const active = activeRole.role_id === r.role_id;
-                    return (
-                      <button
-                        key={r.role_id}
-                        onClick={() => {
-                          setActiveRole(r);
-                          setShowRoles(false);
-                        }}
-                        style={{
-                          width: "100%",
-                          background: active ? s.bg : "#fff",
-                          border: "none",
-                          borderBottom: "1px solid var(--color-border)",
-                          padding: "10px 12px",
-                          fontSize: 12,
-                          fontWeight: active ? 700 : 500,
-                          color: active ? s.text : "var(--color-text-body)",
-                          cursor: "pointer",
-                          textAlign: "left",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            background: active ? s.text : "#cbd5e1",
-                            flexShrink: 0,
-                          }}
-                        />
-                        <div>
-                          <p style={{ margin: 0 }}>{r.role_name}</p>
-                          <p style={{ margin: 0, fontSize: 10, color: "var(--color-text-muted)", fontWeight: 400 }}>
-                            {r.description}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+            <div
+              style={{
+                width: "100%",
+                background: rc.bg,
+                color: rc.text,
+                border: `1px solid ${rc.border}`,
+                borderRadius: 10,
+                padding: "8px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {activeRole.display_name || activeRole.role_name}
             </div>
           )}
         </div>

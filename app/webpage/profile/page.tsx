@@ -18,6 +18,7 @@ type Profile = {
   email: string;
   createdAt?: string;
   roles: string[];
+  teamLeadName?: string | null;
   managerName?: string | null;
   resume?: {
     id: number;
@@ -167,7 +168,8 @@ export default function ProfilePage() {
                 Role & Reporting
               </h3>
               <FieldRow label="Assigned Roles" value={profile.roles.join(", ")} />
-              <FieldRow label="Reporting Manager" value={profile.managerName || "Not assigned"} />
+              {profile.teamLeadName ? <FieldRow label="Team Lead" value={profile.teamLeadName} /> : null}
+              <FieldRow label="Manager" value={profile.managerName || "Not assigned"} />
               {/* <FieldRow label="System ID" value={`#${profile.id}`} /> */}
             </div>
           </div>

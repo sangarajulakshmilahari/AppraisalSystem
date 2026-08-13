@@ -11,16 +11,49 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ app
 
     const pool = getPool();
 
-    // Verify this manager owns this appraisal
+    // Resolve appraisal first
     const [rows] = await pool.query(
-      "SELECT * FROM employee_appraisals WHERE id = ? AND manager_id = ?",
-      [appraisalId, user.id]
+      "SELECT * FROM employee_appraisals WHERE id = ?",
+      [appraisalId]
     );
     if ((rows as any[]).length === 0) {
       return NextResponse.json({ error: "Appraisal not found or not your team member" }, { status: 404 });
     }
 
     const appraisal = (rows as any[])[0];
+
+    // Verify this appraisal employee is actually under current manager
+    // using AARAM reporting map (source of truth).
+    const [managerRows] = await pool.query(
+      "SELECT keycloak_id FROM users WHERE id = ? LIMIT 1",
+      [user.id]
+    );
+    const managerKeycloakId = (managerRows as any[])[0]?.keycloak_id as string | undefined;
+
+    const [employeeRows] = await pool.query(
+      "SELECT keycloak_id FROM users WHERE id = ? LIMIT 1",
+      [appraisal.employee_id]
+    );
+    const employeeKeycloakId = (employeeRows as any[])[0]?.keycloak_id as string | undefined;
+
+    if (!managerKeycloakId || !employeeKeycloakId) {
+      return NextResponse.json({ error: "Appraisal not found or not your team member" }, { status: 404 });
+    }
+
+    const [mapRows] = await pool.query(
+      `SELECT 1
+       FROM aaram_db.employee_reporting_managers erm
+       JOIN aaram_db.employee e ON e.id = erm.employee_id
+       JOIN aaram_db.employee m ON m.id = erm.manager_id
+       WHERE e.keycloak_id = ? AND m.keycloak_id = ?
+       LIMIT 1`,
+      [employeeKeycloakId, managerKeycloakId]
+    );
+
+    if ((mapRows as any[]).length === 0) {
+      return NextResponse.json({ error: "Appraisal not found or not your team member" }, { status: 404 });
+    }
+
     if (appraisal.goals_approved_at) {
       return NextResponse.json({ error: "Goals already approved" }, { status: 400 });
     }

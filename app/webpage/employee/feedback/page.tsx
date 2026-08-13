@@ -12,7 +12,10 @@ type GoalFB = {
   description: string;
   area_name: string | null;
   self_assessment: string | null;
+  team_lead_feedback?: string | null;
+  team_lead_rating?: number | null;
   manager_feedback: string | null;
+  manager_rating?: number | null;
   performance_rating: number | null;
   evidence: Evidence[];
 };
@@ -20,6 +23,8 @@ type GoalFB = {
 type Appraisal = {
   overallRating?: number | null;
   overallRatingLabel?: string | null;
+  hasTeamLead?: boolean;
+  teamLeadReviewCompletedAt?: string | null;
   managerReviewCompletedAt?: string | null;
   hikePercentage?: number | null;
   hikeEffectiveDate?: string | null;
@@ -34,6 +39,8 @@ type CompetencyReview = {
   area_name: string;
   expected_behaviour: string;
   self_rating: number | null;
+  team_lead_rating?: number | null;
+  team_lead_assessment?: string | null;
   manager_rating: number | null;
   manager_feedback: string | null;
 };
@@ -57,13 +64,13 @@ export default function FeedbackPage() {
   const [cycleName, setCycleName] = useState("");
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
+  const [teamLeadName, setTeamLeadName] = useState<string | null>(null);
   const [managerName, setManagerName] = useState<string | null>(null);
   const [competencies, setCompetencies] = useState<CompetencyReview[]>([]);
   const [acknowledged, setAcknowledged] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showAck, setShowAck] = useState(false);
-  const [activeSection, setActiveSection] = useState<"goals" | "competency">("goals");
 
   useEffect(() => {
     Promise.all([fetch("/api/employee/feedback"), fetch("/api/employee/competencies")])
@@ -79,6 +86,7 @@ export default function FeedbackPage() {
         }
         if (feedbackData.avgRating !== undefined) setAvgRating(feedbackData.avgRating);
         if (feedbackData.feedbackVisible !== undefined) setFeedbackVisible(feedbackData.feedbackVisible);
+        if (feedbackData.teamLeadName) setTeamLeadName(feedbackData.teamLeadName);
         if (feedbackData.managerName) setManagerName(feedbackData.managerName);
 
         if (competencyData.competencies) setCompetencies(competencyData.competencies);
@@ -103,8 +111,13 @@ export default function FeedbackPage() {
     }
   };
 
-  const displayRating = appraisal?.overallRating ?? avgRating;
-  const displayLabel = appraisal?.overallRatingLabel || (displayRating ? RATING_LABELS[Math.round(displayRating)] : "Pending");
+  const rawDisplayRating = appraisal?.overallRating ?? avgRating;
+  const displayRating = rawDisplayRating === null || rawDisplayRating === undefined ? null : Number(rawDisplayRating);
+  const hasDisplayRating = typeof displayRating === "number" && Number.isFinite(displayRating);
+  const roundedRating = hasDisplayRating ? Math.round(displayRating) : null;
+  const displayLabel =
+    appraisal?.overallRatingLabel ||
+    (roundedRating !== null && roundedRating >= 1 && roundedRating <= 5 ? RATING_LABELS[roundedRating] : "Pending");
 
   if (loading) {
     return (
@@ -126,8 +139,11 @@ export default function FeedbackPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 30, color: "var(--color-text-heading)", letterSpacing: "-0.02em" }}>Feedback & Results</h1>
           <p style={{ margin: "6px 0 0", color: "var(--color-text-muted)", fontSize: 14 }}>
-            {cycleName} {appraisal?.managerReviewCompletedAt ? `· Manager review completed ${appraisal.managerReviewCompletedAt}` : ""}
+            {cycleName}
+            {appraisal?.teamLeadReviewCompletedAt ? ` · Team Lead review completed ${appraisal.teamLeadReviewCompletedAt}` : ""}
+            {appraisal?.managerReviewCompletedAt ? ` · Manager review completed ${appraisal.managerReviewCompletedAt}` : ""}
           </p>
+          {teamLeadName ? <p style={{ margin: "4px 0 0", color: "var(--color-text-muted)", fontSize: 13 }}>Team Lead: {teamLeadName}</p> : null}
           {managerName ? <p style={{ margin: "4px 0 0", color: "var(--color-text-muted)", fontSize: 13 }}>Manager: {managerName}</p> : null}
         </div>
 
@@ -141,43 +157,6 @@ export default function FeedbackPage() {
           </div>
         )}
       </div>
-
-      <section style={{ ...ui.card, padding: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <button
-          type="button"
-          onClick={() => setActiveSection("goals")}
-          style={{
-            border: activeSection === "goals" ? "1px solid rgba(242,101,34,0.32)" : "1px solid var(--color-border)",
-            background: activeSection === "goals" ? "rgba(242,101,34,0.12)" : "#fff",
-            color: "var(--color-text-heading)",
-            borderRadius: 12,
-            padding: "12px 14px",
-            textAlign: "left",
-            cursor: "pointer",
-            fontWeight: 700,
-            fontSize: 13,
-          }}
-        >
-          Goal Review
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSection("competency")}
-          style={{
-            border: activeSection === "competency" ? "1px solid rgba(242,101,34,0.32)" : "1px solid var(--color-border)",
-            background: activeSection === "competency" ? "rgba(242,101,34,0.12)" : "#fff",
-            color: "var(--color-text-heading)",
-            borderRadius: 12,
-            padding: "12px 14px",
-            textAlign: "left",
-            cursor: "pointer",
-            fontWeight: 700,
-            fontSize: 13,
-          }}
-        >
-          Competency Review
-        </button>
-      </section>
 
       {error && (
         <div style={{ ...ui.card, borderColor: "#fecaca", background: "#fff5f5", color: "#b91c1c", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -194,7 +173,7 @@ export default function FeedbackPage() {
             Overall Performance Rating
           </p>
           <p style={{ margin: "8px 0 0", fontSize: 44, fontWeight: 900, color: "var(--color-text-heading)", lineHeight: 1 }}>
-            {displayRating ? displayRating.toFixed(1) : "—"}
+            {hasDisplayRating ? displayRating.toFixed(1) : "—"}
           </p>
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "var(--color-text-body)", fontWeight: 600 }}>{displayLabel}</p>
         </div>
@@ -242,15 +221,19 @@ export default function FeedbackPage() {
         <div style={{ ...ui.card, borderColor: "#fde68a", background: "#fffbeb", padding: "16px 18px", display: "flex", alignItems: "center", gap: 12 }}>
           <Clock3 size={22} color="#a16207" />
           <div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#92400e" }}>Manager review in progress</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#92400e" }}>
+              {appraisal?.hasTeamLead ? "Team Lead / Manager review in progress" : "Manager review in progress"}
+            </p>
             <p style={{ margin: "2px 0 0", fontSize: 13, color: "#a16207" }}>
-              Feedback and ratings will appear here once manager review is completed.
+              {appraisal?.hasTeamLead
+                ? "Team Lead feedback appears first, followed by Manager feedback after final review."
+                : "Feedback and ratings will appear here once manager review is completed."}
             </p>
           </div>
         </div>
       )}
 
-      {activeSection === "goals" && goals.length > 0 && (
+      {goals.length > 0 && (
         <section style={{ ...ui.card, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--color-border)", background: "#fff8f3" }}>
             <h3 style={{ margin: 0, color: "var(--color-text-heading)", fontSize: 18 }}>Goal-wise Feedback</h3>
@@ -266,13 +249,24 @@ export default function FeedbackPage() {
                 <div style={{ flex: 1 }}>
                   <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--color-text-heading)" }}>{f.description}</p>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: appraisal?.hasTeamLead ? "1fr 1fr 1fr" : "1fr 1fr", gap: 12, marginTop: 12 }}>
                     <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px" }}>
                       <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
                         Self Assessment
                       </p>
                       <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--color-text-body)", lineHeight: 1.5 }}>{f.self_assessment || "Not filled"}</p>
                     </div>
+
+                    {appraisal?.hasTeamLead ? (
+                      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px" }}>
+                        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                          Team Lead Feedback
+                        </p>
+                        <p style={{ margin: "6px 0 0", fontSize: 13, color: f.team_lead_feedback ? "var(--color-text-body)" : "var(--color-text-muted)", lineHeight: 1.5, fontStyle: f.team_lead_feedback ? "normal" : "italic" }}>
+                          {f.team_lead_feedback || "Pending review"}
+                        </p>
+                      </div>
+                    ) : null}
 
                     <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px" }}>
                       <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
@@ -284,8 +278,10 @@ export default function FeedbackPage() {
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
-                    <span style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Performance Rating:</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>
+                      {appraisal?.hasTeamLead ? "Manager Rating:" : "Performance Rating:"}
+                    </span>
                     <div style={{ display: "flex", gap: 6 }}>
                       {[1, 2, 3, 4, 5].map((n) => (
                         <div
@@ -298,21 +294,27 @@ export default function FeedbackPage() {
                             placeItems: "center",
                             fontSize: 13,
                             fontWeight: 800,
-                            background: f.performance_rating && n <= f.performance_rating ? RATING_COLORS[f.performance_rating] : "#f1f5f9",
-                            color: f.performance_rating && n <= f.performance_rating ? "#fff" : "#cbd5e1",
+                            background: (f.manager_rating ?? f.performance_rating) && n <= Number(f.manager_rating ?? f.performance_rating) ? RATING_COLORS[Number(f.manager_rating ?? f.performance_rating)] : "#f1f5f9",
+                            color: (f.manager_rating ?? f.performance_rating) && n <= Number(f.manager_rating ?? f.performance_rating) ? "#fff" : "#cbd5e1",
                           }}
                         >
                           {n}
                         </div>
                       ))}
                     </div>
-                    {f.performance_rating ? (
-                      <span className="status-pill" style={{ background: `${RATING_COLORS[f.performance_rating]}1f`, color: RATING_COLORS[f.performance_rating] }}>
-                        {RATING_LABELS[f.performance_rating]}
+                    {(f.manager_rating ?? f.performance_rating) ? (
+                      <span className="status-pill" style={{ background: `${RATING_COLORS[Number(f.manager_rating ?? f.performance_rating)]}1f`, color: RATING_COLORS[Number(f.manager_rating ?? f.performance_rating)] }}>
+                        {RATING_LABELS[Number(f.manager_rating ?? f.performance_rating)]}
                       </span>
                     ) : (
                       <span style={{ color: "var(--color-text-muted)", fontSize: 12, fontStyle: "italic" }}>Not yet rated</span>
                     )}
+
+                    {appraisal?.hasTeamLead ? (
+                      <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                        Team Lead Rating: {f.team_lead_rating ? `${f.team_lead_rating} / 5` : "Pending"}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -321,7 +323,7 @@ export default function FeedbackPage() {
         </section>
       )}
 
-      {activeSection === "competency" && competencies.length > 0 && (
+      {competencies.length > 0 && (
         <section style={{ ...ui.card, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--color-border)", background: "#fff8f3" }}>
             <h3 style={{ margin: 0, color: "var(--color-text-heading)", fontSize: 18 }}>Competency Manager Review</h3>
@@ -332,7 +334,7 @@ export default function FeedbackPage() {
               <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--color-text-heading)" }}>{c.area_name}</p>
               <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--color-text-muted)", lineHeight: 1.5 }}>{c.expected_behaviour}</p>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: appraisal?.hasTeamLead ? "1fr 1fr 1fr" : "1fr 1fr", gap: 12, marginTop: 12 }}>
                 <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px" }}>
                   <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
                     Self Rating
@@ -341,6 +343,17 @@ export default function FeedbackPage() {
                     {c.self_rating ? `${c.self_rating} / 5 · ${RATING_LABELS[c.self_rating]}` : "Not filled"}
                   </p>
                 </div>
+
+                {appraisal?.hasTeamLead ? (
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px" }}>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                      Team Lead Rating
+                    </p>
+                    <p style={{ margin: "6px 0 0", fontSize: 13, color: c.team_lead_rating ? "var(--color-text-body)" : "var(--color-text-muted)", lineHeight: 1.5, fontStyle: c.team_lead_rating ? "normal" : "italic" }}>
+                      {c.team_lead_rating ? `${c.team_lead_rating} / 5 · ${RATING_LABELS[c.team_lead_rating]}` : "Pending review"}
+                    </p>
+                  </div>
+                ) : null}
 
                 <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px" }}>
                   <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
@@ -351,6 +364,17 @@ export default function FeedbackPage() {
                   </p>
                 </div>
               </div>
+
+              {appraisal?.hasTeamLead ? (
+                <div style={{ marginTop: 10, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px" }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    Team Lead Feedback
+                  </p>
+                  <p style={{ margin: "6px 0 0", fontSize: 13, color: c.team_lead_assessment ? "var(--color-text-body)" : "var(--color-text-muted)", lineHeight: 1.5, fontStyle: c.team_lead_assessment ? "normal" : "italic" }}>
+                    {c.team_lead_assessment || "Pending review"}
+                  </p>
+                </div>
+              ) : null}
 
               <div style={{ marginTop: 10, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px" }}>
                 <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
@@ -365,7 +389,7 @@ export default function FeedbackPage() {
         </section>
       )}
 
-      {activeSection === "goals" && goals.length === 0 && (
+      {goals.length === 0 && (
         <div style={{ ...ui.card, padding: "44px 20px", textAlign: "center" }}>
           <MessageSquare size={44} color="var(--color-navy-700)" />
           <h3 style={{ margin: "10px 0 0", fontSize: 22, color: "var(--color-text-heading)" }}>No feedback available</h3>
@@ -373,7 +397,7 @@ export default function FeedbackPage() {
         </div>
       )}
 
-      {activeSection === "competency" && competencies.length === 0 && (
+      {competencies.length === 0 && (
         <div style={{ ...ui.card, padding: "44px 20px", textAlign: "center" }}>
           <MessageSquare size={44} color="var(--color-navy-700)" />
           <h3 style={{ margin: "10px 0 0", fontSize: 22, color: "var(--color-text-heading)" }}>No competency review available</h3>

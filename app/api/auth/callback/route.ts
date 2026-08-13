@@ -8,11 +8,6 @@ type ExistingUserRow = RowDataPacket & {
   username: string;
 };
 
-type DbRoleRow = RowDataPacket & {
-  role_id: number;
-  role_name: string;
-};
-
 type UsernameRow = RowDataPacket & {
   username: string;
 };
@@ -51,7 +46,6 @@ export async function GET(req: Request) {
   let keycloakId: string | null = null;
   let usernameOrEmail: string | null = null;
   let email: string | null = null;
-  let keycloakRoles: string[] = [];
   let cookieUsername: string | null = null;
 
   try {
@@ -65,23 +59,9 @@ export async function GET(req: Request) {
       usernameOrEmail = payload.preferred_username || payload.email || null;
       email = payload.email || null;
 
-      // Extract CLIENT-level roles (intraapps) — this is what you have
-      const clientId = process.env.KEYCLOAK_CLIENT_ID!;
-      if (payload.resource_access?.[clientId]?.roles) {
-        keycloakRoles = payload.resource_access[clientId].roles;
-      }
-
-      // Also check realm-level roles as fallback
-      if (keycloakRoles.length === 0 && payload.realm_access?.roles) {
-        keycloakRoles = payload.realm_access.roles.filter(
-          (r: string) => !["offline_access", "uma_authorization", "default-roles-adroitent"].includes(r)
-        );
-      }
-
       console.log("=== KEYCLOAK LOGIN ===");
       console.log("User:", usernameOrEmail);
       console.log("Keycloak ID:", keycloakId);
-      console.log("Roles from token:", keycloakRoles);
     }
   } catch (err) {
     console.error("Failed to decode token payload", err);
@@ -121,40 +101,6 @@ export async function GET(req: Request) {
 
           userId = insertResult.insertId;
           cookieUsername = usernameToInsert;
-        }
-      }
-
-      if (userId && keycloakRoles.length > 0) {
-        // Step 3: Load all roles from DB to match by name
-        const [dbRoles] = await pool.query<DbRoleRow[]>(
-          "SELECT role_id, role_name FROM roles"
-        );
-        const roleMap = new Map(
-          dbRoles.map((r) => [r.role_name.toLowerCase(), r.role_id])
-        );
-
-        // Step 4: Match Keycloak role names → DB role IDs
-        const matchedRoleIds: number[] = [];
-        for (const kr of keycloakRoles) {
-          const rid = roleMap.get(kr.toLowerCase());
-          if (rid) matchedRoleIds.push(rid);
-        }
-
-        console.log("Matched DB role IDs:", matchedRoleIds);
-
-        if (matchedRoleIds.length > 0) {
-          // Step 5: Full sync — delete old roles, insert current ones
-          await pool.query("DELETE FROM user_roles WHERE user_id = ?", [userId]);
-
-          const values = matchedRoleIds.map((rid) => [userId, rid, new Date()]);
-          await pool.query(
-            "INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES ?",
-            [values]
-          );
-
-          console.log(`Synced ${matchedRoleIds.length} roles for user ${cookieUsername || usernameOrEmail || keycloakId} (DB id: ${userId})`);
-        } else {
-          console.warn("No matching roles found in DB for:", keycloakRoles);
         }
       }
 
