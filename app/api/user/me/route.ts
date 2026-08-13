@@ -70,7 +70,7 @@ export async function GET() {
     // Resolve logged-in user from AARAM only
     const [rows] = await pool.query<AaramEmployeeRow[]>(
       `SELECT id, keycloak_id, name, email, role
-       FROM aaram_db.employee
+       FROM L_db.employee
        WHERE keycloak_id = ?
        LIMIT 1`,
       [keycloakId]
@@ -79,7 +79,7 @@ export async function GET() {
     const employee = rows[0];
     if (!employee) {
       return NextResponse.json(
-        { error: "User not found in aaram_db.employee" },
+        { error: "User not found in L_db.employee" },
         { status: 404 }
       );
     }

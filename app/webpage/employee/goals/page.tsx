@@ -27,12 +27,8 @@ type Goal = {
 };
 
 type Designation = {
+  id?: number;
   designation_name: string;
-};
-
-type AaramEmployee = {
-  name?: string;
-  employeeId?: string;
 };
 
 type GoalForm = Partial<Goal> & {
@@ -117,8 +113,6 @@ const styles: Record<string, React.CSSProperties> = {
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [designation, setDesignation] = useState<Designation | null>(null);
-  const [projectRole, setProjectRole] = useState<string | null>(null);
-  const [aaramEmployee, setAaramEmployee] = useState<AaramEmployee | null>(null);
   const [goalsEditable, setGoalsEditable] = useState(false);
   const [cycleName, setCycleName] = useState("");
   const [goalsSubmitted, setGoalsSubmitted] = useState(false);
@@ -153,8 +147,6 @@ export default function GoalsPage() {
           setDesignation(data.designation);
           setSelectedDesignationId(data.designation.id);
         }
-        if (data.projectRole) setProjectRole(data.projectRole);
-        if (data.aaramEmployee) setAaramEmployee(data.aaramEmployee);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -401,7 +393,7 @@ export default function GoalsPage() {
                 )}
               </span>
             )}
-            {!designation && goalsEditable && designations.length > 0 && (
+            {!designation && designations.length > 0 && (
               <span>
                 {" "}· Select Designation:{" "}
                 <select
@@ -426,11 +418,6 @@ export default function GoalsPage() {
                     </option>
                   ))}
                 </select>
-              </span>
-            )}
-            {projectRole && !designation && !goalsEditable && (
-              <span>
-                {" "}· Project Role: <strong style={{ color: "#d97706" }}>{projectRole}</strong>
               </span>
             )}
           </p>
@@ -496,17 +483,12 @@ export default function GoalsPage() {
       {goals.length === 0 && !designation && (
         <section style={{ ...styles.card, padding: 28, textAlign: "center" }}>
           <div style={{ display: "grid", placeItems: "center", marginBottom: 12 }}>
-            <AlertTriangle size={36} color="#d97706" />
+            <Target size={36} color="#1f3a68" />
           </div>
-          <h3 style={{ margin: 0, fontSize: 22, color: "var(--color-text-heading)" }}>No Project Role Found</h3>
+          <h3 style={{ margin: 0, fontSize: 22, color: "var(--color-text-heading)" }}>Select Designation to Load Goals</h3>
           <p style={{ margin: "8px auto 0", maxWidth: 640, color: "var(--color-text-muted)", fontSize: 14 }}>
-            Your project role could not be detected from AARAM. Please contact HR to assign your project role in the system, or check that your Keycloak account is linked to your AARAM profile.
+            Project role is now selected manually. Choose your designation from the dropdown above to load KPI goals.
           </p>
-          {projectRole && (
-            <p style={{ marginTop: 10, color: "#b45309", fontSize: 13 }}>
-              Detected role &quot;{projectRole}&quot; does not match any KPI designation. Contact HR.
-            </p>
-          )}
         </section>
       )}
 

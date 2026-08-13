@@ -39,7 +39,7 @@ export async function getTeamAppraisals(managerId: number) {
 
   // 2) Resolve manager's AARAM employee id
   const [managerEmpRows] = await pool.query(
-    "SELECT id FROM aaram_db.employee WHERE keycloak_id = ? LIMIT 1",
+    "SELECT id FROM L_db.employee WHERE keycloak_id = ? LIMIT 1",
     [managerKeycloakId]
   );
   const managerAaramId = (managerEmpRows as { id: number }[])[0]?.id;
@@ -59,8 +59,8 @@ export async function getTeamAppraisals(managerId: number) {
             e.name,
             e.email,
             u.id AS user_id
-     FROM aaram_db.employee_reporting_managers erm
-     JOIN aaram_db.employee e ON e.id = erm.employee_id
+     FROM L_db.employee_reporting_managers erm
+     JOIN L_db.employee e ON e.id = erm.employee_id
      LEFT JOIN appraisal_db.users u ON u.keycloak_id = e.keycloak_id
      WHERE erm.manager_id = ?
      ORDER BY e.name`,

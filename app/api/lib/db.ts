@@ -23,11 +23,11 @@ export function getPool() {
 export function getAaramPool() {
   if (!aaramPool) {
     aaramPool = mysql.createPool({
-      host: process.env.AARAM_DB_HOST || process.env.DB_HOST || "localhost",
-      port: Number(process.env.AARAM_DB_PORT) || Number(process.env.DB_PORT) || 3306,
-      user: process.env.AARAM_DB_USER || process.env.DB_USER || "root",
-      password: process.env.AARAM_DB_PASSWORD || process.env.DB_PASSWORD || "",
-      database: process.env.AARAM_DB_NAME || "aaram_db",
+      host: process.env.L_db_HOST || process.env.DB_HOST || "localhost",
+      port: Number(process.env.L_db_PORT) || Number(process.env.DB_PORT) || 3306,
+      user: process.env.L_db_USER || process.env.DB_USER || "root",
+      password: process.env.L_db_PASSWORD || process.env.DB_PASSWORD || "",
+      database: process.env.L_db_NAME || "L_db",
       waitForConnections: true,
       connectionLimit: 10,
     });

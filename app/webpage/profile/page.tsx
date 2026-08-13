@@ -139,14 +139,6 @@ export default function ProfilePage() {
           <h2 style={{ margin: 0, fontSize: 22, color: "var(--color-text-heading)" }}>{profile.username}</h2>
           <p style={{ margin: "4px 0 12px", fontSize: 13, color: "var(--color-text-muted)" }}>{profile.email}</p>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 14 }}>
-            {profile.roles.map((r: string) => (
-              <span key={r} className="status-pill" style={{ background: "#eef6ff", color: "var(--color-navy-700)", border: "1px solid #dbe5f3" }}>
-                {r}
-              </span>
-            ))}
-          </div>
-
           <div className="status-pill status-approved" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px" }}>
             ● Active Employee
           </div>
@@ -167,7 +159,6 @@ export default function ProfilePage() {
               <h3 style={{ margin: 0, fontSize: 16, color: "var(--color-text-heading)", paddingBottom: 10, borderBottom: "1px solid var(--color-border)" }}>
                 Role & Reporting
               </h3>
-              <FieldRow label="Assigned Roles" value={profile.roles.join(", ")} />
               {profile.teamLeadName ? <FieldRow label="Team Lead" value={profile.teamLeadName} /> : null}
               <FieldRow label="Manager" value={profile.managerName || "Not assigned"} />
               {/* <FieldRow label="System ID" value={`#${profile.id}`} /> */}

@@ -131,9 +131,9 @@ export async function GET() {
     // Resolve whether this employee has a Team Lead in AARAM mapping
     const [hasTeamLeadRows] = await pool.query(
       `SELECT 1
-       FROM aaram_db.employee_reporting_managers erm
-       JOIN aaram_db.employee e ON e.id = erm.employee_id
-       JOIN aaram_db.employee m ON m.id = erm.manager_id
+       FROM L_db.employee_reporting_managers erm
+       JOIN L_db.employee e ON e.id = erm.employee_id
+       JOIN L_db.employee m ON m.id = erm.manager_id
        WHERE e.keycloak_id = ?
          AND LOWER(COALESCE(m.role, '')) = 'manager'
        LIMIT 1`,
@@ -176,9 +176,9 @@ export async function GET() {
     if (employeeKeycloakId) {
       const [tlRows] = await pool.query(
         `SELECT m.name
-         FROM aaram_db.employee_reporting_managers erm
-         JOIN aaram_db.employee e ON e.id = erm.employee_id
-         JOIN aaram_db.employee m ON m.id = erm.manager_id
+         FROM L_db.employee_reporting_managers erm
+         JOIN L_db.employee e ON e.id = erm.employee_id
+         JOIN L_db.employee m ON m.id = erm.manager_id
          WHERE e.keycloak_id = ?
            AND LOWER(COALESCE(m.role, '')) = 'manager'
          LIMIT 1`,

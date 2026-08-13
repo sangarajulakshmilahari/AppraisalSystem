@@ -47,9 +47,9 @@ export async function POST() {
     if (employeeKeycloakId) {
       const [teamLeadRows] = await pool.query(
         `SELECT u.id AS user_id
-         FROM aaram_db.employee_reporting_managers erm
-         JOIN aaram_db.employee e ON e.id = erm.employee_id
-         JOIN aaram_db.employee m ON m.id = erm.manager_id
+         FROM L_db.employee_reporting_managers erm
+         JOIN L_db.employee e ON e.id = erm.employee_id
+         JOIN L_db.employee m ON m.id = erm.manager_id
          JOIN users u ON u.keycloak_id = m.keycloak_id
          WHERE e.keycloak_id = ?
            AND LOWER(COALESCE(m.role, '')) = 'manager'

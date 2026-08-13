@@ -42,9 +42,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ app
 
     const [mapRows] = await pool.query(
       `SELECT 1
-       FROM aaram_db.employee_reporting_managers erm
-       JOIN aaram_db.employee e ON e.id = erm.employee_id
-       JOIN aaram_db.employee m ON m.id = erm.manager_id
+       FROM L_db.employee_reporting_managers erm
+       JOIN L_db.employee e ON e.id = erm.employee_id
+       JOIN L_db.employee m ON m.id = erm.manager_id
        WHERE e.keycloak_id = ? AND m.keycloak_id = ?
        LIMIT 1`,
       [employeeKeycloakId, managerKeycloakId]

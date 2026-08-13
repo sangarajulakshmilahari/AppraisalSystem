@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "../../lib/db";
 import { getCurrentUser, getActiveAppraisal } from "../../lib/getuser";
-import { getProjectRole } from "../../lib/getProjectRole";
 
 function isWindowOpen(start: any, end: any): boolean {
   if (!start || !end) return false;
@@ -33,8 +32,6 @@ export async function GET() {
     const pool = getPool();
 
     let designation = null;
-    let projectRole = null;
-    let aaramEmployee = null;
     let resolvedDesignationId: number | null = appraisal.designation_id ? Number(appraisal.designation_id) : null;
 
     if (appraisal.designation_id) {
@@ -45,25 +42,10 @@ export async function GET() {
       if ((desRows as any[]).length > 0) designation = (desRows as any[])[0];
     }
 
-    if (user.keycloak_id) {
-      const roleInfo = await getProjectRole(user.keycloak_id);
-      projectRole = roleInfo.projectRole;
-      aaramEmployee = roleInfo.employee;
-
-      if (!appraisal.designation_id && roleInfo.designation) {
-        designation = roleInfo.designation;
-        resolvedDesignationId = Number(designation.id);
-        await pool.query(
-          "UPDATE employee_appraisals SET designation_id = ? WHERE id = ?",
-          [designation.id, appraisal.id]
-        );
-      }
-
-      // Fallback: if appraisal already has designation_id but designation object wasn't resolved
-      // (e.g., stale row / delayed sync), still keep the id for goal loading checks.
-      if (!resolvedDesignationId && appraisal.designation_id) {
-        resolvedDesignationId = Number(appraisal.designation_id);
-      }
+    // Keep designation selection manual via dropdown.
+    // Do not auto-resolve project role/designation from external AARAM mapping.
+    if (!resolvedDesignationId && appraisal.designation_id) {
+      resolvedDesignationId = Number(appraisal.designation_id);
     }
 
     // Auto-load goals when none exist yet for this appraisal and designation is known.
@@ -107,8 +89,6 @@ export async function GET() {
         designationId: appraisal.designation_id,
       },
       designation,
-      projectRole,
-      aaramEmployee,
       goalsEditable,
     });
   } catch (error: any) {

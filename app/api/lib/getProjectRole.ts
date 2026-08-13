@@ -2,14 +2,14 @@
 import { getPool } from "./db";
 
 // We can use getPool (appraisal_db) with cross-database queries since same server
-// OR use getAaramPool for direct aaram_db queries
+// OR use getAaramPool for direct L_db queries
 
 export async function getProjectRole(keycloakId: string) {
   const pool = getPool();
 
-  // Step 1: Find employee in aaram_db by keycloak_id
+  // Step 1: Find employee in L_db by keycloak_id
   const [empRows] = await pool.query(
-    "SELECT id, employee_id, name, email, designation, role FROM aaram_db.employee WHERE keycloak_id = ?",
+    "SELECT id, employee_id, name, email, designation, role FROM L_db.employee WHERE keycloak_id = ?",
     [keycloakId]
   );
 
@@ -19,13 +19,13 @@ export async function getProjectRole(keycloakId: string) {
 
   const employee = (empRows as any[])[0];
 
-  // Step 1.1: Resolve reporting manager (if mapped in aaram_db), then map to appraisal_db user id
+  // Step 1.1: Resolve reporting manager (if mapped in L_db), then map to appraisal_db user id
   let managerUserId: number | null = null;
   try {
     const [reportingRows] = await pool.query(
       `SELECT erm.manager_id, m.role AS manager_role
-       FROM aaram_db.employee_reporting_managers erm
-       JOIN aaram_db.employee m ON m.id = erm.manager_id
+       FROM L_db.employee_reporting_managers erm
+       JOIN L_db.employee m ON m.id = erm.manager_id
        WHERE erm.employee_id = ?
        ORDER BY CASE
          WHEN LOWER(m.role) = 'r_manager' THEN 0
@@ -43,7 +43,7 @@ export async function getProjectRole(keycloakId: string) {
 
       if (managerEmployeeId) {
         const [managerEmpRows] = await pool.query(
-          "SELECT keycloak_id FROM aaram_db.employee WHERE id = ? LIMIT 1",
+          "SELECT keycloak_id FROM L_db.employee WHERE id = ? LIMIT 1",
           [managerEmployeeId]
         );
         const managerKeycloakId = (managerEmpRows as any[])[0]?.keycloak_id;
@@ -62,18 +62,12 @@ export async function getProjectRole(keycloakId: string) {
     managerUserId = null;
   }
 
-  // Step 2: Get project_role from employee_project_assignment
-  const [assignRows] = await pool.query(
-    "SELECT project_role, project_id FROM aaram_db.employee_project_assignment WHERE employee_id = ? AND project_role IS NOT NULL LIMIT 1",
-    [employee.id]
-  );
+  // Step 2: Do NOT query project_role from employee_project_assignment.
+  // Some environments don't have that column/table shape, which caused runtime 500 errors.
+  // Use employee.designation as the role-like source when designation mapping is needed.
+  const projectRole: string | null = employee.designation ?? null;
 
-  let projectRole: string | null = null;
-  if ((assignRows as any[]).length > 0) {
-    projectRole = (assignRows as any[])[0].project_role;
-  }
-
-  // Step 3: Map project_role to kpi_designations
+  // Step 3: Map role-like value to kpi_designations
   let designation = null;
   if (projectRole) {
     // Try exact match first

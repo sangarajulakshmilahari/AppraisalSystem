@@ -88,7 +88,7 @@ export async function GET() {
       }
     }
 
-    // Resolve reporting hierarchy from aaram_db.employee_reporting_managers
+    // Resolve reporting hierarchy from L_db.employee_reporting_managers
     // Business mapping:
     // - aaram role = 'Manager'   => Team Lead
     // - aaram role = 'R_Manager' => Manager
@@ -96,7 +96,7 @@ export async function GET() {
     let managerName: string | null = null;
 
     const [aaramEmpRows] = await pool.query(
-      "SELECT id FROM aaram_db.employee WHERE keycloak_id = ? LIMIT 1",
+      "SELECT id FROM L_db.employee WHERE keycloak_id = ? LIMIT 1",
       [userInfo.keycloak_id]
     );
     const aaramEmployee = (aaramEmpRows as AaramEmployeeRow[])[0];
@@ -104,8 +104,8 @@ export async function GET() {
     if (aaramEmployee?.id) {
       const [reportingRows] = await pool.query(
         `SELECT mgr.name AS manager_name, mgr.role AS manager_role
-         FROM aaram_db.employee_reporting_managers erm
-         JOIN aaram_db.employee mgr ON mgr.id = erm.manager_id
+         FROM L_db.employee_reporting_managers erm
+         JOIN L_db.employee mgr ON mgr.id = erm.manager_id
          WHERE erm.employee_id = ?
          ORDER BY CASE
            WHEN LOWER(mgr.role) = 'manager' THEN 0

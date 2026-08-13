@@ -34,7 +34,7 @@ export async function GET() {
 
     // Detect reviewer role from AARAM (Team Lead role is stored as 'Manager').
     const [reviewerRows] = await pool.query(
-      "SELECT u.keycloak_id, ae.role FROM users u LEFT JOIN aaram_db.employee ae ON ae.keycloak_id = u.keycloak_id WHERE u.id = ? LIMIT 1",
+      "SELECT u.keycloak_id, ae.role FROM users u LEFT JOIN L_db.employee ae ON ae.keycloak_id = u.keycloak_id WHERE u.id = ? LIMIT 1",
       [user.id]
     );
     const reviewerAaramRole = String((reviewerRows as any[])[0]?.role || "").toLowerCase();

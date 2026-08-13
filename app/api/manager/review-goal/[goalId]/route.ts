@@ -59,17 +59,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ goal
     const [mapRows] = await pool.query(
       `WITH RECURSIVE reporting_chain AS (
          SELECT erm.employee_id, erm.manager_id, 1 AS lvl
-         FROM aaram_db.employee_reporting_managers erm
+         FROM L_db.employee_reporting_managers erm
          UNION ALL
          SELECT rc.employee_id, erm.manager_id, rc.lvl + 1
          FROM reporting_chain rc
-         JOIN aaram_db.employee_reporting_managers erm ON erm.employee_id = rc.manager_id
+         JOIN L_db.employee_reporting_managers erm ON erm.employee_id = rc.manager_id
          WHERE rc.lvl < 6
        )
        SELECT 1
        FROM reporting_chain rc
-       JOIN aaram_db.employee e ON e.id = rc.employee_id
-       JOIN aaram_db.employee m ON m.id = rc.manager_id
+       JOIN L_db.employee e ON e.id = rc.employee_id
+       JOIN L_db.employee m ON m.id = rc.manager_id
        WHERE e.keycloak_id = ? AND m.keycloak_id = ?
        LIMIT 1`,
       [employeeKeycloakId, managerKeycloakId]
@@ -89,7 +89,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ goal
     // If current reviewer is Team Lead (aaram role = 'Manager'),
     // save text into team-lead feedback column instead of manager_feedback.
     const [reviewerRoleRows] = await pool.query(
-      "SELECT role FROM aaram_db.employee WHERE keycloak_id = ? LIMIT 1",
+      "SELECT role FROM L_db.employee WHERE keycloak_id = ? LIMIT 1",
       [managerKeycloakId]
     );
     const reviewerAaramRole = String((reviewerRoleRows as any[])[0]?.role || "").toLowerCase();
