@@ -120,6 +120,8 @@ export default function GoalsPage() {
   const [goalWindowOpen, setGoalWindowOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<GoalForm>({});
   const [showConfirm, setShowConfirm] = useState(false);
@@ -310,7 +312,10 @@ export default function GoalsPage() {
   };
 
   const handleSubmit = async () => {
+    if (submitting) return;
     setError("");
+    setSuccess("");
+    setSubmitting(true);
     try {
       const res = await fetch("/api/employee/goals/submit", { method: "POST" });
       const data = await res.json();
@@ -323,8 +328,11 @@ export default function GoalsPage() {
       setGoalsEditable(false);
       setGoals(goals.map((g) => ({ ...g, status: g.status === "draft" ? "submitted" : g.status })));
       setShowConfirm(false);
+      setSuccess(data.message || "Goals submitted successfully. Your Team Lead and Manager have been notified.");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to submit goals");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -475,6 +483,26 @@ export default function GoalsPage() {
         >
           <span>{error}</span>
           <button aria-label="Close" onClick={() => setError("")} style={{ border: 0, background: "transparent", color: "#b91c1c", cursor: "pointer" }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div
+          style={{
+            ...styles.card,
+            padding: "12px 14px",
+            borderColor: "#bbf7d0",
+            background: "#f0fdf4",
+            color: "#166534",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>{success}</span>
+          <button aria-label="Close" onClick={() => setSuccess("")} style={{ border: 0, background: "transparent", color: "#166534", cursor: "pointer" }}>
             <X size={16} />
           </button>
         </div>
@@ -758,11 +786,11 @@ export default function GoalsPage() {
             {error && <p style={{ color: "#b91c1c", fontSize: 13, marginTop: 10 }}>{error}</p>}
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
-              <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
+              <button className="btn btn-secondary" onClick={() => setShowConfirm(false)} disabled={submitting}>
                 Cancel
               </button>
-              <button className="btn btn-primary" onClick={handleSubmit}>
-                Confirm & Submit
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+                {submitting ? "Submitting..." : "Confirm & Submit"}
               </button>
             </div>
           </div>
