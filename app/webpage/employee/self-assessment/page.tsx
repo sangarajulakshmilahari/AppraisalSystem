@@ -69,6 +69,8 @@ export default function SelfAssessmentPage({
   const [saEnd, setSaEnd] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving] = useState<Record<number, boolean>>({});
 
@@ -176,7 +178,10 @@ export default function SelfAssessmentPage({
   };
 
   const handleSubmit = async () => {
+    if (submitting) return;
     setError("");
+    setSuccess("");
+    setSubmitting(true);
     try {
       const res = await fetch("/api/employee/self-assessment/submit", { method: "POST" });
       const data = await res.json();
@@ -187,8 +192,11 @@ export default function SelfAssessmentPage({
       setSubmitted(true);
       setSaEditable(false);
       setShowConfirm(false);
+      setSuccess(data.message || "Self-Assessment submitted successfully. Your Team Lead and Manager have been notified.");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to submit self assessment");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -229,6 +237,15 @@ export default function SelfAssessmentPage({
         <div style={{ ...ui.card, borderColor: "#fecaca", background: "#fff5f5", color: "#b91c1c", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{error}</span>
           <button onClick={() => setError("")} style={{ border: 0, background: "transparent", color: "#b91c1c", cursor: "pointer" }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div style={{ ...ui.card, borderColor: "#bbf7d0", background: "#f0fdf4", color: "#166534", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>{success}</span>
+          <button onClick={() => setSuccess("")} style={{ border: 0, background: "transparent", color: "#166534", cursor: "pointer" }}>
             <X size={16} />
           </button>
         </div>
@@ -506,11 +523,11 @@ export default function SelfAssessmentPage({
             </p>
             {error && <p style={{ color: "#b91c1c", fontSize: 13, marginBottom: 12 }}>{error}</p>}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
+              <button className="btn btn-secondary" onClick={() => setShowConfirm(false)} disabled={submitting}>
                 Cancel
               </button>
-              <button className="btn btn-primary" onClick={handleSubmit}>
-                Confirm & Submit
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+                {submitting ? "Submitting..." : "Confirm & Submit"}
               </button>
             </div>
           </div>

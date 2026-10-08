@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/db";
 import { getCurrentUser, getActiveAppraisal } from "../../../lib/getuser";
+import { notifyAppraisalSubmission } from "../../../lib/notifyAppraisalSubmission";
 
 export async function POST() {
   try {
@@ -11,7 +12,7 @@ export async function POST() {
     const active = await getActiveAppraisal(user.id);
     if (!active) return NextResponse.json({ error: "No active appraisal cycle" }, { status: 400 });
 
-    const { appraisal } = active;
+    const { appraisal, cycle } = active;
 
     if (appraisal.competency_submitted_at) {
       return NextResponse.json({ error: "Competency assessment already submitted" }, { status: 400 });
@@ -61,39 +62,59 @@ export async function POST() {
 
     const nextPhase = teamLeadUserId ? "team_lead_review" : "manager_review";
 
-    // Mark submitted, advance phase
-    await pool.query(
-      `UPDATE employee_appraisals 
-       SET competency_submitted_at = NOW(),
-           current_phase = ?
-       WHERE id = ?`,
-      [nextPhase, appraisal.id]
-    );
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
 
-    // Notify reviewer (Team Lead first, else Manager)
-    if (teamLeadUserId) {
-      await pool.query(
-        `INSERT INTO notifications (user_id, title, message, type, link_url)
-         VALUES (?, ?, ?, 'action', '/webpage/manager/team-assessments')`,
-        [
-          teamLeadUserId,
-          "Competency Assessment Submitted",
-          `${user.username} has completed competency self-assessment and is ready for your Team Lead review.`,
-        ]
+      const [lockedRows] = await conn.query(
+        "SELECT competency_submitted_at FROM employee_appraisals WHERE id = ? FOR UPDATE",
+        [appraisal.id]
       );
-    } else if (appraisal.manager_id) {
-      await pool.query(
-        `INSERT INTO notifications (user_id, title, message, type, link_url)
-         VALUES (?, ?, ?, 'action', '/webpage/manager/competency-ratings')`,
-        [
-          appraisal.manager_id,
-          "Competency Assessment Submitted",
-          `${user.username} has completed their competency self-assessment and is ready for your review.`,
-        ]
+      const locked = (lockedRows as { competency_submitted_at: Date | string | null }[])[0];
+      if (!locked) {
+        await conn.rollback();
+        return NextResponse.json({ error: "No active appraisal cycle" }, { status: 400 });
+      }
+      if (locked.competency_submitted_at) {
+        await conn.rollback();
+        return NextResponse.json({ error: "Competency assessment already submitted" }, { status: 400 });
+      }
+
+      // Mark submitted, advance phase
+      await conn.query(
+        `UPDATE employee_appraisals 
+         SET competency_submitted_at = NOW(),
+             current_phase = ?
+         WHERE id = ?`,
+        [nextPhase, appraisal.id]
       );
+
+      await conn.commit();
+    } catch (txError) {
+      await conn.rollback();
+      throw txError;
+    } finally {
+      conn.release();
     }
 
-    return NextResponse.json({ success: true, message: "Competency assessment submitted" });
+    try {
+      await notifyAppraisalSubmission({
+        pool,
+        notificationType: "COMPETENCY_SUBMISSION",
+        employeeKeycloakId: user.keycloak_id,
+        employeeUsername: user.username,
+        appraisalId: appraisal.id,
+        cycleName: (cycle as { cycle_name?: string }).cycle_name || "Appraisal Cycle",
+        fallbackManagerUserId: appraisal.manager_id ?? null,
+      });
+    } catch (notifyError) {
+      console.error("POST /api/employee/competencies/submit notification error:", notifyError);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Competency Assessment submitted successfully. Your Team Lead and Manager have been notified.",
+    });
   } catch (error: any) {
     console.error("POST /api/employee/competencies/submit error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
